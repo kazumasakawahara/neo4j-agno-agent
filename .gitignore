@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Environment variables (機密情報)
+.env
+.env.local
+.env.*.local
+
+# Neo4j data (ローカルデータ)
+neo4j_data/
+neo4j_logs/
+neo4j_plugins/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# uv lock file (任意：含めても良い)
+# uv.lock

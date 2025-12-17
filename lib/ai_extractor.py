@@ -1,0 +1,193 @@
+"""
+親亡き後支援データベース - AI構造化モジュール
+テキストからの情報抽出、JSON構造化処理
+"""
+
+import os
+import re
+import json
+from dotenv import load_dotenv
+from agno.agent import Agent
+from agno.models.google import Gemini
+
+load_dotenv()
+
+# =============================================================================
+# AI抽出用プロンプト（マニフェスト準拠）
+# =============================================================================
+
+EXTRACTION_PROMPT = """
+あなたは「親亡き後支援データベース」のデータ抽出専門家です。
+提供されたテキストから、支援に必要な情報を**JSON形式で**抽出してください。
+
+【重要な姿勢】
+- 暗黙知を見逃さない：「〜すると落ち着く」「〜は嫌がる」を必ず拾う
+- 禁忌事項（NgAction）は最優先：「絶対に〜しないで」「〜するとパニック」を漏らさない
+- 推測で創作しない：テキストにない情報は出力しない
+
+【出力形式】
+必ず以下のJSON構造で出力してください。該当がない項目は空配列[]としてください。
+
+```json
+{
+  "client": {
+    "name": "氏名（必須）",
+    "dob": "生年月日（YYYY-MM-DD形式、不明なら null）",
+    "bloodType": "血液型（不明なら null）"
+  },
+  "conditions": [
+    {
+      "name": "特性・診断名",
+      "status": "Active"
+    }
+  ],
+  "ngActions": [
+    {
+      "action": "絶対にしてはいけないこと",
+      "reason": "その理由（なぜ危険か）",
+      "riskLevel": "LifeThreatening または Panic または Discomfort",
+      "relatedCondition": "関連する特性名（あれば）"
+    }
+  ],
+  "carePreferences": [
+    {
+      "category": "食事/入浴/パニック時/移動/睡眠/服薬/コミュニケーション/その他",
+      "instruction": "具体的な手順・方法",
+      "priority": "High または Medium または Low",
+      "relatedCondition": "関連する特性名（あれば）"
+    }
+  ],
+  "certificates": [
+    {
+      "type": "療育手帳/精神障害者保健福祉手帳/身体障害者手帳/障害福祉サービス受給者証/自立支援医療受給者証",
+      "grade": "等級（A1, 2級, 区分5 など）",
+      "nextRenewalDate": "更新日（YYYY-MM-DD形式）"
+    }
+  ],
+  "keyPersons": [
+    {
+      "name": "氏名",
+      "relationship": "続柄（母, 叔父, 姉 など）",
+      "phone": "電話番号",
+      "role": "役割（緊急連絡先, 医療同意, 金銭管理 など）",
+      "rank": 1
+    }
+  ],
+  "guardians": [
+    {
+      "name": "氏名または法人名",
+      "type": "成年後見/保佐/補助/任意後見",
+      "phone": "連絡先",
+      "organization": "所属（法人の場合）"
+    }
+  ],
+  "hospitals": [
+    {
+      "name": "病院名",
+      "specialty": "診療科",
+      "phone": "電話番号",
+      "doctor": "担当医名"
+    }
+  ],
+  "lifeHistories": [
+    {
+      "era": "時期（幼少期/学齢期/青年期/成人後）",
+      "episode": "エピソード内容",
+      "emotion": "その時の感情・反応"
+    }
+  ],
+  "wishes": [
+    {
+      "content": "願いの内容",
+      "date": "記録日（YYYY-MM-DD形式、今日なら今日の日付）"
+    }
+  ]
+}
+```
+
+【抽出ルール】
+1. 「〜すると落ち着く」「〜が好き」→ carePreferences
+2. 「〜は嫌がる」「〜するとパニック」「絶対に〜しないで」→ ngActions（最重要！）
+3. 「〜に連絡して」「〜が後見人」→ keyPersons または guardians
+4. 「来年の○月に更新」→ certificates（日付は2025年12月現在として推定）
+5. 「かかりつけは○○病院」→ hospitals
+
+【禁止事項】
+- JSON以外のテキストを出力しない
+- ```json と ``` で囲んで出力する
+- テキストにない情報を創作しない
+"""
+
+# --- AIエージェント ---
+_agent = None
+
+def get_agent():
+    """AIエージェントを取得（シングルトン）"""
+    global _agent
+    if _agent is None:
+        _agent = Agent(
+            model=Gemini(id="gemini-2.0-flash-exp", api_key=os.getenv("GEMINI_API_KEY")),
+            description="ナラティブから構造化データを抽出する専門家",
+            instructions=[EXTRACTION_PROMPT],
+            markdown=True
+        )
+    return _agent
+
+
+def parse_json_from_response(response_text: str) -> dict | None:
+    """
+    AIレスポンスからJSONを抽出
+    
+    Args:
+        response_text: AIからのレスポンステキスト
+        
+    Returns:
+        パースされたdict、または失敗時はNone
+    """
+    try:
+        # ```json ... ``` を抽出
+        pattern = r'```json\s*(.*?)\s*```'
+        match = re.search(pattern, response_text, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        # そのままJSONとしてパース試行
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        return None
+
+
+def extract_from_text(text: str, client_name: str = None) -> dict | None:
+    """
+    テキストから構造化データを抽出
+    
+    Args:
+        text: 入力テキスト（ナラティブ、面談記録など）
+        client_name: 既存クライアント名（追記モードの場合）
+        
+    Returns:
+        構造化されたdict、または失敗時はNone
+    """
+    agent = get_agent()
+    
+    # 追記モードの場合、クライアント名を追加
+    prompt_text = text
+    if client_name:
+        prompt_text = f"【対象クライアント: {client_name}】\n\n{text}"
+    
+    try:
+        response = agent.run(
+            f"以下のテキストから情報を抽出してJSON形式で出力してください：\n\n{prompt_text}"
+        )
+        
+        extracted = parse_json_from_response(response.content)
+        
+        if extracted:
+            # 追記モードの場合、クライアント名を設定
+            if client_name and extracted.get('client'):
+                extracted['client']['name'] = client_name
+            return extracted
+        
+        return None
+        
+    except Exception:
+        return None
