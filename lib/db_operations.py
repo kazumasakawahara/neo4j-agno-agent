@@ -32,10 +32,65 @@ def run_query(query, params=None):
         return [record.data() for record in result]
 
 
+def register_support_log(log_data: dict, client_name: str) -> dict:
+    """
+    支援記録（SupportLog）をデータベースに登録
+
+    Args:
+        log_data: 支援記録データ（supportLogs配列の1要素）
+        client_name: クライアント名
+
+    Returns:
+        登録結果
+    """
+    # Supporterノードを作成/取得
+    run_query("""
+        MERGE (s:Supporter {name: $supporter})
+    """, {"supporter": log_data['supporter']})
+
+    # SupportLogノードを作成し、関係を構築
+    result = run_query("""
+        MATCH (c:Client {name: $client_name})
+        MATCH (s:Supporter {name: $supporter})
+
+        CREATE (log:SupportLog {
+            date: date($date),
+            situation: $situation,
+            action: $action,
+            effectiveness: $effectiveness,
+            note: $note
+        })
+
+        CREATE (s)-[:LOGGED]->(log)-[:ABOUT]->(c)
+
+        RETURN log.date as date, log.situation as situation
+    """, {
+        "client_name": client_name,
+        "supporter": log_data['supporter'],
+        "date": log_data['date'],
+        "situation": log_data['situation'],
+        "action": log_data['action'],
+        "effectiveness": log_data['effectiveness'],
+        "note": log_data.get('note', '')
+    })
+
+    if result:
+        return {
+            "status": "success",
+            "message": f"支援記録を登録: {log_data['situation']}",
+            "data": result[0]
+        }
+    else:
+        return {
+            "status": "error",
+            "message": f"クライアント '{client_name}' が見つかりません"
+        }
+
+
 def register_to_database(data: dict) -> None:
     """
     構造化データをNeo4jに登録
-    
+
     Args:
         data: AI構造化されたクライアントデータ（dict）
     """
@@ -192,6 +247,11 @@ def register_to_database(data: dict) -> None:
                 "date": wish.get('date', date.today().isoformat())
             })
 
+    # 11. 支援記録（SupportLog）
+    for log in data.get('supportLogs', []):
+        if log.get('supporter') and log.get('action'):
+            register_support_log(log, client_name)
+
 
 def get_clients_list():
     """登録済みクライアント一覧を取得"""
@@ -201,15 +261,62 @@ def get_clients_list():
 def get_client_stats():
     """クライアント統計情報を取得"""
     client_count = run_query("MATCH (n:Client) RETURN count(n) as c")[0]['c']
-    
+
     ng_by_client = run_query("""
         MATCH (c:Client)
         OPTIONAL MATCH (c)-[:MUST_AVOID]->(ng:NgAction)
         RETURN c.name as name, count(ng) as ng_count
         ORDER BY c.name
     """)
-    
+
     return {
         'client_count': client_count,
         'ng_by_client': ng_by_client
     }
+
+
+def get_support_logs(client_name: str, limit: int = 20):
+    """
+    特定クライアントの支援記録を取得
+
+    Args:
+        client_name: クライアント名
+        limit: 取得件数（デフォルト20件）
+
+    Returns:
+        支援記録のリスト
+    """
+    return run_query("""
+        MATCH (s:Supporter)-[:LOGGED]->(log:SupportLog)-[:ABOUT]->(c:Client {name: $client_name})
+        RETURN log.date as 日付,
+               s.name as 支援者,
+               log.situation as 状況,
+               log.action as 対応,
+               log.effectiveness as 効果,
+               log.note as メモ
+        ORDER BY log.date DESC
+        LIMIT $limit
+    """, {"client_name": client_name, "limit": limit})
+
+
+def discover_care_patterns(client_name: str, min_frequency: int = 3):
+    """
+    効果的なケアパターンを発見
+
+    Args:
+        client_name: クライアント名
+        min_frequency: 最小出現回数
+
+    Returns:
+        発見されたパターンのリスト
+    """
+    return run_query("""
+        MATCH (c:Client {name: $client_name})<-[:ABOUT]-(log:SupportLog)
+        WHERE log.effectiveness = 'Effective'
+        WITH c, log.situation as situation, log.action as action, count(*) as frequency
+        WHERE frequency >= $min_frequency
+        RETURN situation as 状況,
+               action as 対応方法,
+               frequency as 効果的だった回数
+        ORDER BY frequency DESC
+    """, {"client_name": client_name, "min_frequency": min_frequency})

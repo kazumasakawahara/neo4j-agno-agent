@@ -24,6 +24,7 @@ EXTRACTION_PROMPT = """
 - 暗黙知を見逃さない：「〜すると落ち着く」「〜は嫌がる」を必ず拾う
 - 禁忌事項（NgAction）は最優先：「絶対に〜しないで」「〜するとパニック」を漏らさない
 - 推測で創作しない：テキストにない情報は出力しない
+- 支援記録（日報・レポート）も抽出：「今日〜した」「〜の対応で落ち着いた」
 
 【出力形式】
 必ず以下のJSON構造で出力してください。該当がない項目は空配列[]としてください。
@@ -55,6 +56,16 @@ EXTRACTION_PROMPT = """
       "instruction": "具体的な手順・方法",
       "priority": "High または Medium または Low",
       "relatedCondition": "関連する特性名（あれば）"
+    }
+  ],
+  "supportLogs": [
+    {
+      "date": "記録日（YYYY-MM-DD形式、テキストから推定）",
+      "supporter": "記録者・支援者名",
+      "situation": "状況（パニック時/食事時/入浴時/外出時/コミュニケーション/その他）",
+      "action": "実施した対応の具体的内容",
+      "effectiveness": "Effective（効果的）/Neutral（変化なし）/Ineffective（逆効果）",
+      "note": "詳細メモ・気づき"
     }
   ],
   "certificates": [
@@ -108,9 +119,18 @@ EXTRACTION_PROMPT = """
 【抽出ルール】
 1. 「〜すると落ち着く」「〜が好き」→ carePreferences
 2. 「〜は嫌がる」「〜するとパニック」「絶対に〜しないで」→ ngActions（最重要！）
-3. 「〜に連絡して」「〜が後見人」→ keyPersons または guardians
-4. 「来年の○月に更新」→ certificates（日付は2025年12月現在として推定）
-5. 「かかりつけは○○病院」→ hospitals
+3. 「今日〜した」「〜の対応で効果があった」→ supportLogs（日報・支援記録）
+4. 「〜に連絡して」「〜が後見人」→ keyPersons または guardians
+5. 「来年の○月に更新」→ certificates（日付は2025年12月現在として推定）
+6. 「かかりつけは○○病院」→ hospitals
+
+【supportLogs抽出の重要ポイント】
+- 「今日」「昨日」などの日付表現から実際の日付を推定
+- 「効果的だった」「うまくいった」→ Effective
+- 「変化なし」「いつも通り」→ Neutral
+- 「悪化した」「逆効果」→ Ineffective
+- 記録者名（田中ヘルパー、佐藤施設長など）を必ず抽出
+- 対応の具体的内容を詳細に記録
 
 【禁止事項】
 - JSON以外のテキストを出力しない

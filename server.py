@@ -552,23 +552,198 @@ def get_database_stats() -> str:
             "生育歴エピソード数": "MATCH (n:LifeHistory) RETURN count(n) AS count",
             "願い数": "MATCH (n:Wish) RETURN count(n) AS count",
             "医療機関数": "MATCH (n:Hospital) RETURN count(n) AS count",
-            "支援者数": "MATCH (n:Supporter) RETURN count(n) AS count"
+            "支援者数": "MATCH (n:Supporter) RETURN count(n) AS count",
+            "支援記録数": "MATCH (n:SupportLog) RETURN count(n) AS count"
         }
-        
+
         stats = {}
         with driver.session() as session:
             for label, query in queries.items():
                 result = session.run(query)
                 stats[label] = result.single()['count']
-        
+
         return json.dumps({
             "📊 データベース統計": stats,
             "更新日時": datetime.now().isoformat()
         }, ensure_ascii=False, indent=2)
-        
+
     except Exception as e:
         log(f"統計取得エラー: {e}")
         return f"エラーが発生しました: {e}"
+
+
+@mcp.tool()
+def add_support_log(
+    client_name: str,
+    narrative_text: str
+) -> str:
+    """
+    支援記録を物語風テキストから自動抽出して登録します。
+
+    日常の支援内容を自由なテキストで記録し、AIが自動的に構造化データとして保存します。
+    「今日〜した」「〜の対応で落ち着いた」などの表現から、支援記録を抽出します。
+
+    Args:
+        client_name: クライアント名
+        narrative_text: 支援記録の物語風テキスト（例: 「今日、健太さんがパニックを起こしたので、静かに見守りました。5分で落ち着きました。」）
+
+    Returns:
+        登録結果のメッセージ
+
+    使用例:
+        - 「山田健太さんの支援記録を追加: 今日の訪問で、急な音に驚いてパニックになりました。テレビを消して静かにしたら、5分で落ち着きました。この対応は効果的でした。」
+        - 「佐々木真理さんの記録: 後ろから声をかけたらパニックになった。次からは必ず視界に入ってから話しかけるようにします。」
+    """
+    try:
+        log(f"支援記録追加: {client_name}")
+
+        # AI抽出を使って構造化
+        import sys
+        sys.path.append('/Users/k-kawahara/Dev-Work/neo4j-agno-agent')
+        from lib.ai_extractor import extract_from_text
+        from lib.db_operations import register_to_database
+
+        extracted_data = extract_from_text(narrative_text, client_name=client_name)
+
+        if not extracted_data:
+            return "❌ テキストからデータを抽出できませんでした。もう少し詳しく記述してください。"
+
+        # データベースに登録
+        register_to_database(extracted_data)
+
+        # 登録内容をサマリー
+        summary = []
+
+        if extracted_data.get('supportLogs'):
+            summary.append(f"✅ {len(extracted_data['supportLogs'])}件の支援記録を登録しました")
+
+        if extracted_data.get('ngActions'):
+            summary.append(f"⚠️ {len(extracted_data['ngActions'])}件の禁忌事項を抽出しました")
+
+        if extracted_data.get('carePreferences'):
+            summary.append(f"💡 {len(extracted_data['carePreferences'])}件の推奨ケアを抽出しました")
+
+        return "\n".join(summary) if summary else "✅ データを登録しました"
+
+    except Exception as e:
+        log(f"支援記録追加エラー: {e}")
+        return f"❌ エラーが発生しました: {e}"
+
+
+@mcp.tool()
+def get_support_logs(
+    client_name: str,
+    limit: int = 10
+) -> str:
+    """
+    クライアントの支援記録履歴を取得します。
+
+    過去の支援内容と効果を時系列で確認できます。
+    効果的だった対応を参考にしたり、逆効果だった対応を避けるために使用します。
+
+    Args:
+        client_name: クライアント名
+        limit: 取得件数（デフォルト: 10件、最大50件）
+
+    Returns:
+        支援記録の履歴（JSON形式）
+
+    使用例:
+        - 「山田健太さんの最近の支援記録を見せて」
+        - 「佐々木真理さんの過去20件の支援記録」
+    """
+    try:
+        log(f"支援記録取得: {client_name}, 件数: {limit}")
+
+        # 上限設定
+        limit = min(limit, 50)
+
+        query = """
+        MATCH (s:Supporter)-[:LOGGED]->(log:SupportLog)-[:ABOUT]->(c:Client)
+        WHERE c.name CONTAINS $client_name
+        RETURN log.date as 日付,
+               s.name as 支援者,
+               log.situation as 状況,
+               log.action as 対応,
+               log.effectiveness as 効果,
+               log.note as メモ
+        ORDER BY log.date DESC
+        LIMIT $limit
+        """
+
+        with driver.session() as session:
+            result = session.run(query, client_name=client_name, limit=limit)
+            logs = [record.data() for record in result]
+
+            if not logs:
+                return f"'{client_name}' さんの支援記録が見つかりませんでした。"
+
+            return json.dumps({
+                "クライアント": client_name,
+                "支援記録件数": len(logs),
+                "履歴": logs
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"支援記録取得エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+@mcp.tool()
+def discover_care_patterns(
+    client_name: str,
+    min_frequency: int = 2
+) -> str:
+    """
+    効果的だった支援パターンを発見します。
+
+    複数回効果があった対応方法を自動検出し、ベストプラクティスとして提示します。
+    経験知を蓄積し、新しい支援者への引き継ぎに活用できます。
+
+    Args:
+        client_name: クライアント名
+        min_frequency: 最小出現回数（デフォルト: 2回以上）
+
+    Returns:
+        発見されたパターンのリスト（JSON形式）
+
+    使用例:
+        - 「山田健太さんの効果的なケアパターンを教えて」
+        - 「佐々木真理さんで3回以上効果があった対応方法は？」
+    """
+    try:
+        log(f"パターン発見: {client_name}, 最小頻度: {min_frequency}")
+
+        query = """
+        MATCH (c:Client)<-[:ABOUT]-(log:SupportLog)
+        WHERE c.name CONTAINS $client_name
+          AND log.effectiveness = 'Effective'
+        WITH c, log.situation as situation, log.action as action, count(*) as frequency
+        WHERE frequency >= $min_frequency
+        RETURN situation as 状況,
+               action as 対応方法,
+               frequency as 効果的だった回数
+        ORDER BY frequency DESC
+        """
+
+        with driver.session() as session:
+            result = session.run(query, client_name=client_name, min_frequency=min_frequency)
+            patterns = [record.data() for record in result]
+
+            if not patterns:
+                return f"'{client_name}' さんで{min_frequency}回以上効果的だったパターンは見つかりませんでした。"
+
+            return json.dumps({
+                "クライアント": client_name,
+                "発見されたパターン数": len(patterns),
+                "効果的なケアパターン": patterns,
+                "💡 活用方法": "これらのパターンを新しい支援者への引き継ぎや、マニュアル作成に活用してください。"
+            }, ensure_ascii=False, indent=2)
+
+    except Exception as e:
+        log(f"パターン発見エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
 
 # =============================================================================
 # メイン実行

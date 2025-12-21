@@ -12,7 +12,7 @@ import json
 from datetime import date
 
 # --- ライブラリからインポート ---
-from lib.db_operations import run_query, register_to_database, get_clients_list, get_client_stats
+from lib.db_operations import run_query, register_to_database, get_clients_list, get_client_stats, get_support_logs, discover_care_patterns
 from lib.ai_extractor import extract_from_text
 from lib.utils import safe_date_parse, init_session_state, reset_session_state, get_input_example
 from lib.file_readers import read_uploaded_file, get_supported_extensions, check_dependencies
@@ -575,7 +575,7 @@ def render_done_step():
         st.divider()
         st.subheader(f"📋 {client_name}さんの登録データ")
         
-        tab1, tab2, tab3, tab4 = st.tabs(["禁忌事項", "推奨ケア", "キーパーソン", "手帳"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["禁忌事項", "推奨ケア", "支援記録", "キーパーソン", "手帳"])
         
         with tab1:
             ng_data = run_query("""
@@ -596,8 +596,94 @@ def render_done_step():
                 st.dataframe(care_data, use_container_width=True)
             else:
                 st.info("登録なし")
-        
+
         with tab3:
+            st.markdown("#### 📝 支援記録履歴")
+
+            # 支援記録を取得
+            support_logs = get_support_logs(client_name, limit=50)
+
+            if support_logs:
+                # 効果別に色分け表示
+                st.markdown(f"**全{len(support_logs)}件の記録**")
+
+                for log in support_logs:
+                    # 効果に応じて色分け
+                    if log['効果'] == 'Effective':
+                        badge_color = "#28a745"  # 緑
+                        badge_icon = "✅"
+                    elif log['効果'] == 'Ineffective':
+                        badge_color = "#dc3545"  # 赤
+                        badge_icon = "❌"
+                    else:
+                        badge_color = "#6c757d"  # グレー
+                        badge_icon = "➖"
+
+                    with st.container():
+                        col1, col2, col3 = st.columns([2, 3, 1])
+
+                        with col1:
+                            st.markdown(f"**📅 {log['日付']}**")
+                            st.caption(f"記録者: {log['支援者']}")
+
+                        with col2:
+                            st.markdown(f"**状況**: {log['状況']}")
+                            st.text(f"対応: {log['対応'][:100]}{'...' if len(log['対応']) > 100 else ''}")
+
+                        with col3:
+                            st.markdown(
+                                f'<div style="background-color: {badge_color}; color: white; '
+                                f'padding: 4px 8px; border-radius: 4px; text-align: center;">'
+                                f'{badge_icon} {log["効果"]}</div>',
+                                unsafe_allow_html=True
+                            )
+
+                        # 詳細メモがあれば表示
+                        if log.get('メモ'):
+                            with st.expander("📎 詳細メモを見る"):
+                                st.info(log['メモ'])
+
+                        st.divider()
+
+                # パターン発見セクション
+                st.markdown("---")
+                st.markdown("#### 🔍 効果的なケアパターンの発見")
+
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.caption("複数回効果があった対応を自動検出します")
+                with col2:
+                    min_freq = st.number_input("最小回数", min_value=1, max_value=10, value=2, key="min_freq")
+
+                if st.button("🔍 パターンを発見", use_container_width=True):
+                    patterns = discover_care_patterns(client_name, min_frequency=min_freq)
+
+                    if patterns:
+                        st.success(f"✅ {len(patterns)}件のパターンを発見しました")
+
+                        for i, pattern in enumerate(patterns, 1):
+                            with st.container():
+                                st.markdown(
+                                    f'<div style="background-color: #e7f3ff; padding: 12px; '
+                                    f'border-left: 4px solid #0066cc; border-radius: 4px; margin: 8px 0;">'
+                                    f'<strong>パターン {i}</strong><br>'
+                                    f'<strong>状況:</strong> {pattern["状況"]}<br>'
+                                    f'<strong>対応:</strong> {pattern["対応方法"]}<br>'
+                                    f'<strong>効果的だった回数:</strong> {pattern["効果的だった回数"]}回'
+                                    f'</div>',
+                                    unsafe_allow_html=True
+                                )
+                    else:
+                        st.warning(f"⚠️ {min_freq}回以上効果的だったパターンは見つかりませんでした")
+            else:
+                st.info("支援記録はまだ登録されていません")
+                st.markdown("""
+                **支援記録を追加するには:**
+                - 日常の支援内容を物語風に入力してください
+                - 「今日〜した」「〜の対応で落ち着いた」などの表現が自動抽出されます
+                """)
+
+        with tab4:
             kp_data = run_query("""
                 MATCH (c:Client {name: $name})-[r:HAS_KEY_PERSON]->(kp:KeyPerson)
                 RETURN r.rank as 順位, kp.name as 氏名, kp.relationship as 続柄, kp.phone as 電話
@@ -607,8 +693,8 @@ def render_done_step():
                 st.dataframe(kp_data, use_container_width=True)
             else:
                 st.info("登録なし")
-        
-        with tab4:
+
+        with tab5:
             cert_data = run_query("""
                 MATCH (c:Client {name: $name})-[:HAS_CERTIFICATE]->(cert:Certificate)
                 RETURN cert.type as 種類, cert.grade as 等級, cert.nextRenewalDate as 更新日
