@@ -13,13 +13,59 @@ Version: 2.0
 import os
 import sys
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from neo4j import GraphDatabase
 
 # 環境変数の読み込み
 load_dotenv()
+
+# 年齢計算用ヘルパー関数
+def calculate_age(birth_date) -> int | None:
+    """生年月日から年齢を計算"""
+    if birth_date is None:
+        return None
+
+    # Neo4jのdate型またはdatetimeから変換
+    if hasattr(birth_date, 'to_native'):
+        birth_date = birth_date.to_native()
+    elif isinstance(birth_date, str):
+        try:
+            birth_date = datetime.strptime(birth_date, "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    if not isinstance(birth_date, date):
+        return None
+
+    today = date.today()
+    age = today.year - birth_date.year
+    if (today.month, today.day) < (birth_date.month, birth_date.day):
+        age -= 1
+
+    return age if age >= 0 else None
+
+
+def format_dob_with_age(dob) -> str:
+    """生年月日と年齢をフォーマット"""
+    if dob is None:
+        return "不明"
+
+    # Neo4jのdate型から変換
+    if hasattr(dob, 'to_native'):
+        dob = dob.to_native()
+
+    age = calculate_age(dob)
+
+    if isinstance(dob, date):
+        dob_str = dob.strftime("%Y-%m-%d")
+    else:
+        dob_str = str(dob)
+
+    if age is not None:
+        return f"{dob_str}（{age}歳）"
+    return dob_str
 
 # MCPサーバーの定義
 mcp = FastMCP("ParentSupportDB")
@@ -263,9 +309,10 @@ def search_emergency_info(client_name: str, situation: str = "") -> str:
         
         // 5. 法的代理人
         OPTIONAL MATCH (c)-[:HAS_LEGAL_REP]->(g:Guardian)
-        
-        RETURN 
+
+        RETURN
             c.name AS client,
+            c.dob AS dob,
             c.bloodType AS bloodType,
             ngActions AS 禁忌事項_最優先,
             carePrefs AS 推奨ケア,
@@ -284,10 +331,15 @@ def search_emergency_info(client_name: str, situation: str = "") -> str:
             
             if not data or not data[0].get('client'):
                 return f"'{client_name}' に該当するクライアントが見つかりませんでした。"
-            
+
+            # 年齢計算
+            dob = data[0].get('dob')
+            dob_with_age = format_dob_with_age(dob)
+
             # 結果を整形
             response = {
                 "⚠️ 緊急対応情報": data[0].get('client'),
+                "生年月日（年齢）": dob_with_age,
                 "血液型": data[0].get('bloodType'),
                 "🚫 1. 禁忌事項（絶対にしないこと）": [x for x in data[0].get('禁忌事項_最優先', []) if x.get('action')],
                 "✅ 2. 推奨ケア（こうすると落ち着く）": [x for x in data[0].get('推奨ケア', []) if x.get('instruction')],
@@ -442,10 +494,15 @@ def get_client_profile(client_name: str) -> str:
             
             # 空のデータをフィルタリング
             profile = data[0]
+
+            # 年齢計算
+            dob = profile.get('生年月日')
+            dob_with_age = format_dob_with_age(dob)
+
             clean_profile = {
                 "【基本情報】": {
                     "氏名": profile.get('氏名'),
-                    "生年月日": profile.get('生年月日'),
+                    "生年月日（年齢）": dob_with_age,
                     "血液型": profile.get('血液型')
                 },
                 "【第1の柱：本人性】": {
@@ -483,13 +540,13 @@ def get_client_profile(client_name: str) -> str:
 def list_clients() -> str:
     """
     登録されているすべてのクライアントの一覧と、各クライアントの情報登録状況を取得します。
-    
+
     Returns:
-        クライアント一覧と登録状況のサマリー
+        クライアント一覧と登録状況のサマリー（年齢表示付き）
     """
     try:
         log("クライアント一覧取得")
-        
+
         query = """
         MATCH (c:Client)
         OPTIONAL MATCH (c)-[:MUST_AVOID]->(ng:NgAction)
@@ -497,8 +554,8 @@ def list_clients() -> str:
         OPTIONAL MATCH (c)-[:HAS_KEY_PERSON]->(kp:KeyPerson)
         OPTIONAL MATCH (c)-[:HAS_CERTIFICATE]->(cert:Certificate)
         OPTIONAL MATCH (c)-[:HAS_LEGAL_REP]->(g:Guardian)
-        
-        RETURN 
+
+        RETURN
             c.name AS 氏名,
             c.dob AS 生年月日,
             count(DISTINCT ng) AS 禁忌登録数,
@@ -508,14 +565,22 @@ def list_clients() -> str:
             count(DISTINCT g) AS 後見人
         ORDER BY c.name
         """
-        
+
         with driver.session() as session:
             result = session.run(query)
             data = [record.data() for record in result]
-            
+
             if not data:
                 return "登録されているクライアントはいません。"
-            
+
+            # 年齢を追加
+            for item in data:
+                dob = item.get('生年月日')
+                item['生年月日（年齢）'] = format_dob_with_age(dob)
+                # 元の生年月日フィールドは削除（重複を避ける）
+                if '生年月日' in item:
+                    del item['生年月日']
+
             return json.dumps({
                 "登録クライアント数": len(data),
                 "一覧": data
