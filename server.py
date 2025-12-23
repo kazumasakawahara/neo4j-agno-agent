@@ -260,53 +260,53 @@ def search_emergency_info(client_name: str, situation: str = "") -> str:
     """
     try:
         log(f"緊急検索: {client_name}, 状況: {situation}")
-        
-        # 状況フィルタの構築
-        situation_filter = ""
-        if situation:
-            situation_filter = f"AND (con.name CONTAINS '{situation}' OR cp.category CONTAINS '{situation}' OR ng.action CONTAINS '{situation}')"
-        
-        query = f"""
+
+        # パラメータ化されたクエリ（Cypherインジェクション対策）
+        # situation が指定された場合は関連フィルタを適用
+        query = """
         // 1. 禁忌事項（最優先）
-        OPTIONAL MATCH (c:Client)-[:MUST_AVOID]->(ng:NgAction)
+        MATCH (c:Client)
         WHERE c.name CONTAINS $name
+        OPTIONAL MATCH (c)-[:MUST_AVOID]->(ng:NgAction)
+        WHERE $situation = '' OR ng.action CONTAINS $situation
         OPTIONAL MATCH (ng)-[:IN_CONTEXT]->(ngCon:Condition)
-        WITH c, collect(DISTINCT {{
+        WITH c, collect(DISTINCT {
             action: ng.action,
             reason: ng.reason,
             riskLevel: ng.riskLevel,
             context: ngCon.name
-        }}) AS ngActions
-        
+        }) AS ngActions
+
         // 2. 推奨ケア
         OPTIONAL MATCH (c)-[:REQUIRES]->(cp:CarePreference)
+        WHERE $situation = '' OR cp.category CONTAINS $situation
         OPTIONAL MATCH (cp)-[:ADDRESSES]->(cpCon:Condition)
-        WITH c, ngActions, collect(DISTINCT {{
+        WITH c, ngActions, collect(DISTINCT {
             category: cp.category,
             instruction: cp.instruction,
             priority: cp.priority,
             forCondition: cpCon.name
-        }}) AS carePrefs
-        
+        }) AS carePrefs
+
         // 3. 緊急連絡先（ランク順）
         OPTIONAL MATCH (c)-[kpRel:HAS_KEY_PERSON]->(kp:KeyPerson)
-        WITH c, ngActions, carePrefs, collect(DISTINCT {{
+        WITH c, ngActions, carePrefs, collect(DISTINCT {
             rank: kpRel.rank,
             name: kp.name,
             relationship: kp.relationship,
             phone: kp.phone,
             role: kp.role
-        }}) AS keyPersons
-        
+        }) AS keyPersons
+
         // 4. かかりつけ医
         OPTIONAL MATCH (c)-[:TREATED_AT]->(h:Hospital)
-        WITH c, ngActions, carePrefs, keyPersons, collect(DISTINCT {{
+        WITH c, ngActions, carePrefs, keyPersons, collect(DISTINCT {
             name: h.name,
             specialty: h.specialty,
             phone: h.phone,
             doctor: h.doctor
-        }}) AS hospitals
-        
+        }) AS hospitals
+
         // 5. 法的代理人
         OPTIONAL MATCH (c)-[:HAS_LEGAL_REP]->(g:Guardian)
 
@@ -318,15 +318,15 @@ def search_emergency_info(client_name: str, situation: str = "") -> str:
             carePrefs AS 推奨ケア,
             keyPersons AS 緊急連絡先,
             hospitals AS かかりつけ医,
-            collect(DISTINCT {{
+            collect(DISTINCT {
                 name: g.name,
                 type: g.type,
                 phone: g.phone
-            }}) AS 法的代理人
+            }) AS 法的代理人
         """
-        
+
         with driver.session() as session:
-            result = session.run(query, name=client_name)
+            result = session.run(query, name=client_name, situation=situation or '')
             data = [record.data() for record in result]
             
             if not data or not data[0].get('client'):
@@ -374,17 +374,16 @@ def check_renewal_dates(days_ahead: int = 90, client_name: str = "") -> str:
     """
     try:
         log(f"期限チェック: {days_ahead}日以内, クライアント: {client_name or '全員'}")
-        
-        name_filter = f"AND c.name CONTAINS '{client_name}'" if client_name else ""
-        
-        query = f"""
+
+        # パラメータ化されたクエリ（Cypherインジェクション対策）
+        query = """
         MATCH (c:Client)-[:HAS_CERTIFICATE]->(cert:Certificate)
         WHERE cert.nextRenewalDate IS NOT NULL
-        {name_filter}
-        WITH c, cert, 
+          AND ($client_name = '' OR c.name CONTAINS $client_name)
+        WITH c, cert,
              duration.inDays(date(), cert.nextRenewalDate).days AS daysUntilRenewal
         WHERE daysUntilRenewal <= $days AND daysUntilRenewal >= 0
-        RETURN 
+        RETURN
             c.name AS クライアント,
             cert.type AS 証明書種類,
             cert.grade AS 等級,
@@ -392,9 +391,9 @@ def check_renewal_dates(days_ahead: int = 90, client_name: str = "") -> str:
             daysUntilRenewal AS 残り日数
         ORDER BY daysUntilRenewal ASC
         """
-        
+
         with driver.session() as session:
-            result = session.run(query, days=days_ahead)
+            result = session.run(query, days=days_ahead, client_name=client_name or '')
             data = [record.data() for record in result]
             
             if not data:
@@ -663,8 +662,12 @@ def add_support_log(
         log(f"支援記録追加: {client_name}")
 
         # AI抽出を使って構造化
+        # 動的にプロジェクトルートをパスに追加（ハードコードを回避）
         import sys
-        sys.path.append('/Users/k-kawahara/Dev-Work/neo4j-agno-agent')
+        from pathlib import Path
+        project_root = Path(__file__).parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
         from lib.ai_extractor import extract_from_text
         from lib.db_operations import register_to_database
 
