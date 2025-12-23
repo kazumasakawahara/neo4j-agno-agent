@@ -29,6 +29,10 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "")
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "")
 LINE_GROUP_ID = os.getenv("LINE_GROUP_ID", "")
 
+# CORS設定（カンマ区切りで複数指定可能、未設定時は全許可）
+# 例: "https://example.com,https://app.example.com"
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "")
+
 # --- Neo4j接続 ---
 driver = None
 
@@ -58,9 +62,16 @@ app = FastAPI(
 )
 
 # CORS設定（スマホアプリからのアクセスを許可）
+# CORS_ORIGINS環境変数が設定されている場合はそれを使用、未設定時は全許可（開発用）
+cors_origins = CORS_ORIGINS.split(",") if CORS_ORIGINS else ["*"]
+if CORS_ORIGINS:
+    print(f"✅ CORS許可オリジン: {cors_origins}")
+else:
+    print("⚠️ CORS_ORIGINSが未設定のため全オリジンを許可（本番環境では設定推奨）")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 本番環境では制限推奨
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
