@@ -154,6 +154,32 @@ Claude Desktopに`support-db`サーバーを設定後、以下のような質問
 | `add_support_log` | 物語風テキストから支援記録を自動登録 |
 | `get_support_logs` | クライアントの支援記録履歴を取得 |
 | `discover_care_patterns` | 効果的なケアパターンを自動発見 |
+| `get_audit_logs` | 操作履歴（監査ログ）を取得 |
+| `get_client_change_history` | クライアント別の変更履歴を取得 |
+
+## 🔒 監査ログ・バックアップ
+
+### 監査ログ
+
+データの変更履歴を自動記録します（誰が・いつ・何を変更したか）：
+
+```
+「山田健太さんの変更履歴を確認」
+→ 2024-01-15 田中 CREATE NgAction "後ろから声をかけない"
+→ 2024-01-14 佐藤 CREATE Client 基本情報登録
+```
+
+### バックアップ
+
+```bash
+# 手動バックアップ
+./scripts/backup.sh
+
+# 定期バックアップ（cron設定例：毎日AM3時）
+0 3 * * * cd /path/to/neo4j-agno-agent && ./scripts/backup.sh
+```
+
+バックアップは `neo4j_backup/` ディレクトリに保存され、30日間保持されます。
 
 ## 📋 対応ファイル形式
 

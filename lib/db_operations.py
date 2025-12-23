@@ -1,14 +1,21 @@
 """
 親亡き後支援データベース - データベース操作モジュール
-Neo4j接続、クエリ実行、データ登録処理
+Neo4j接続、クエリ実行、データ登録処理、監査ログ
 """
 
 import os
-from datetime import date
+import sys
+from datetime import date, datetime
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 
 load_dotenv()
+
+# --- ログ出力 ---
+def log(message: str, level: str = "INFO"):
+    """ログ出力（標準エラー出力）"""
+    sys.stderr.write(f"[DB_Operations:{level}] {message}\n")
+    sys.stderr.flush()
 
 # --- Neo4j 接続 ---
 _driver = None
@@ -18,7 +25,7 @@ def get_driver():
     global _driver
     if _driver is None:
         _driver = GraphDatabase.driver(
-            os.getenv("NEO4J_URI"), 
+            os.getenv("NEO4J_URI"),
             auth=(os.getenv("NEO4J_USERNAME"), os.getenv("NEO4J_PASSWORD"))
         )
     return _driver
@@ -30,6 +37,121 @@ def run_query(query, params=None):
     with driver.session() as session:
         result = session.run(query, params or {})
         return [record.data() for record in result]
+
+
+# =============================================================================
+# 監査ログ機能
+# =============================================================================
+
+def create_audit_log(
+    user_name: str,
+    action: str,
+    target_type: str,
+    target_name: str,
+    details: str = "",
+    client_name: str = None
+) -> dict:
+    """
+    監査ログを作成
+
+    Args:
+        user_name: 操作を行ったユーザー名
+        action: 操作種別（CREATE, UPDATE, DELETE, READ）
+        target_type: 対象ノードタイプ（Client, NgAction, CarePreference等）
+        target_name: 対象の識別名
+        details: 操作の詳細（任意）
+        client_name: 関連するクライアント名（任意）
+
+    Returns:
+        作成された監査ログ情報
+    """
+    result = run_query("""
+        CREATE (al:AuditLog {
+            timestamp: datetime(),
+            user: $user_name,
+            action: $action,
+            targetType: $target_type,
+            targetName: $target_name,
+            details: $details,
+            clientName: $client_name
+        })
+        RETURN al.timestamp as timestamp, al.action as action
+    """, {
+        "user_name": user_name,
+        "action": action,
+        "target_type": target_type,
+        "target_name": target_name,
+        "details": details,
+        "client_name": client_name or ""
+    })
+
+    log(f"監査ログ記録: {user_name} - {action} - {target_type}:{target_name}")
+    return result[0] if result else {}
+
+
+def get_audit_logs(
+    client_name: str = None,
+    user_name: str = None,
+    action: str = None,
+    limit: int = 50
+) -> list:
+    """
+    監査ログを取得
+
+    Args:
+        client_name: クライアント名でフィルタ（任意）
+        user_name: ユーザー名でフィルタ（任意）
+        action: 操作種別でフィルタ（任意）
+        limit: 取得件数（デフォルト50件）
+
+    Returns:
+        監査ログのリスト
+    """
+    return run_query("""
+        MATCH (al:AuditLog)
+        WHERE ($client_name = '' OR al.clientName CONTAINS $client_name)
+          AND ($user_name = '' OR al.user CONTAINS $user_name)
+          AND ($action = '' OR al.action = $action)
+        RETURN al.timestamp as 日時,
+               al.user as 操作者,
+               al.action as 操作,
+               al.targetType as 対象種別,
+               al.targetName as 対象名,
+               al.details as 詳細,
+               al.clientName as クライアント
+        ORDER BY al.timestamp DESC
+        LIMIT $limit
+    """, {
+        "client_name": client_name or "",
+        "user_name": user_name or "",
+        "action": action or "",
+        "limit": limit
+    })
+
+
+def get_client_change_history(client_name: str, limit: int = 20) -> list:
+    """
+    特定クライアントに関する変更履歴を取得
+
+    Args:
+        client_name: クライアント名
+        limit: 取得件数
+
+    Returns:
+        変更履歴のリスト
+    """
+    return run_query("""
+        MATCH (al:AuditLog)
+        WHERE al.clientName CONTAINS $client_name
+        RETURN al.timestamp as 日時,
+               al.user as 操作者,
+               al.action as 操作,
+               al.targetType as 対象種別,
+               al.targetName as 内容,
+               al.details as 詳細
+        ORDER BY al.timestamp DESC
+        LIMIT $limit
+    """, {"client_name": client_name, "limit": limit})
 
 
 def register_support_log(log_data: dict, client_name: str) -> dict:
@@ -87,15 +209,20 @@ def register_support_log(log_data: dict, client_name: str) -> dict:
         }
 
 
-def register_to_database(data: dict) -> None:
+def register_to_database(data: dict, user_name: str = "system") -> dict:
     """
-    構造化データをNeo4jに登録
+    構造化データをNeo4jに登録（監査ログ付き）
 
     Args:
         data: AI構造化されたクライアントデータ（dict）
+        user_name: 登録を行うユーザー名（デフォルト: "system"）
+
+    Returns:
+        登録結果のサマリー
     """
     client_name = data['client']['name']
-    
+    registered_items = []
+
     # 1. クライアント基本情報
     run_query("""
         MERGE (c:Client {name: $name})
@@ -106,6 +233,17 @@ def register_to_database(data: dict) -> None:
         "dob": data['client'].get('dob'),
         "blood": data['client'].get('bloodType')
     })
+
+    # 監査ログ: クライアント登録/更新
+    create_audit_log(
+        user_name=user_name,
+        action="CREATE",
+        target_type="Client",
+        target_name=client_name,
+        details=f"基本情報登録/更新",
+        client_name=client_name
+    )
+    registered_items.append("Client")
     
     # 2. 特性・診断
     for cond in data.get('conditions', []):
@@ -117,7 +255,7 @@ def register_to_database(data: dict) -> None:
                 MERGE (c)-[:HAS_CONDITION]->(con)
             """, {"client": client_name, "name": cond['name'], "status": cond.get('status', 'Active')})
     
-    # 3. 禁忌事項（NgAction）
+    # 3. 禁忌事項（NgAction）- 最重要データのため詳細ログ
     for ng in data.get('ngActions', []):
         if ng.get('action'):
             run_query("""
@@ -130,7 +268,18 @@ def register_to_database(data: dict) -> None:
                 "reason": ng.get('reason', ''),
                 "risk": ng.get('riskLevel', 'Panic')
             })
-            
+
+            # 監査ログ: 禁忌事項（安全に関わる重要データ）
+            create_audit_log(
+                user_name=user_name,
+                action="CREATE",
+                target_type="NgAction",
+                target_name=ng['action'],
+                details=f"リスクレベル: {ng.get('riskLevel', 'Panic')}, 理由: {ng.get('reason', '')}",
+                client_name=client_name
+            )
+            registered_items.append("NgAction")
+
             # 関連特性との紐付け
             if ng.get('relatedCondition'):
                 run_query("""
@@ -248,9 +397,28 @@ def register_to_database(data: dict) -> None:
             })
 
     # 11. 支援記録（SupportLog）
-    for log in data.get('supportLogs', []):
-        if log.get('supporter') and log.get('action'):
-            register_support_log(log, client_name)
+    for support_log in data.get('supportLogs', []):
+        if support_log.get('supporter') and support_log.get('action'):
+            register_support_log(support_log, client_name)
+            # 監査ログ: 支援記録
+            create_audit_log(
+                user_name=user_name,
+                action="CREATE",
+                target_type="SupportLog",
+                target_name=f"{support_log.get('situation', '')} - {support_log.get('action', '')}",
+                details=f"効果: {support_log.get('effectiveness', '')}",
+                client_name=client_name
+            )
+            registered_items.append("SupportLog")
+
+    # 登録サマリーをログ出力
+    log(f"登録完了: {client_name} - 項目数: {len(registered_items)}")
+
+    return {
+        "client_name": client_name,
+        "registered_count": len(registered_items),
+        "registered_types": list(set(registered_items))
+    }
 
 
 def get_clients_list():

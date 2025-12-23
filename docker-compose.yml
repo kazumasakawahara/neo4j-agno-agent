@@ -17,4 +17,5 @@ services:
       - ./neo4j_data:/data       # 【重要】データをローカルフォルダに保存
       - ./neo4j_logs:/logs
       - ./neo4j_plugins:/plugins
+      - ./neo4j_backup:/backup   # バックアップ用ディレクトリ
     restart: unless-stopped

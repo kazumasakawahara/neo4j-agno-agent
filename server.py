@@ -814,6 +814,132 @@ def discover_care_patterns(
 
 
 # =============================================================================
+# ツール10: 監査ログ取得
+# =============================================================================
+
+@mcp.tool()
+def get_audit_logs(
+    client_name: str = "",
+    user_name: str = "",
+    limit: int = 30
+) -> str:
+    """
+    監査ログ（操作履歴）を取得します。
+
+    誰が・いつ・何を変更したかを確認できます。
+    権利擁護の観点から、データの変更履歴を追跡するために使用します。
+
+    Args:
+        client_name: クライアント名でフィルタ（任意、部分一致）
+        user_name: 操作者名でフィルタ（任意、部分一致）
+        limit: 取得件数（デフォルト: 30件、最大100件）
+
+    Returns:
+        監査ログの一覧（JSON形式）
+
+    使用例:
+        - 「最近の操作履歴を見せて」
+        - 「山田健太さんに関する変更履歴」
+        - 「田中さんが行った操作一覧」
+    """
+    try:
+        log(f"監査ログ取得: client={client_name}, user={user_name}")
+
+        limit = min(limit, 100)
+
+        query = """
+        MATCH (al:AuditLog)
+        WHERE ($client_name = '' OR al.clientName CONTAINS $client_name)
+          AND ($user_name = '' OR al.user CONTAINS $user_name)
+        RETURN al.timestamp as 日時,
+               al.user as 操作者,
+               al.action as 操作,
+               al.targetType as 対象種別,
+               al.targetName as 対象名,
+               al.details as 詳細,
+               al.clientName as クライアント
+        ORDER BY al.timestamp DESC
+        LIMIT $limit
+        """
+
+        with driver.session() as session:
+            result = session.run(query,
+                client_name=client_name or "",
+                user_name=user_name or "",
+                limit=limit
+            )
+            logs = [record.data() for record in result]
+
+            if not logs:
+                return "監査ログが見つかりませんでした。"
+
+            return json.dumps({
+                "📋 監査ログ": f"{len(logs)}件",
+                "履歴": logs
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"監査ログ取得エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+@mcp.tool()
+def get_client_change_history(
+    client_name: str,
+    limit: int = 20
+) -> str:
+    """
+    特定クライアントに関する変更履歴を取得します。
+
+    クライアントの情報がいつ・誰によって変更されたかを時系列で確認できます。
+    引き継ぎ時や問題発生時の原因調査に活用できます。
+
+    Args:
+        client_name: クライアント名
+        limit: 取得件数（デフォルト: 20件）
+
+    Returns:
+        変更履歴（JSON形式）
+
+    使用例:
+        - 「山田健太さんの変更履歴を確認」
+        - 「佐々木さんのデータ更新履歴」
+    """
+    try:
+        log(f"変更履歴取得: {client_name}")
+
+        query = """
+        MATCH (al:AuditLog)
+        WHERE al.clientName CONTAINS $client_name
+        RETURN al.timestamp as 日時,
+               al.user as 操作者,
+               al.action as 操作,
+               al.targetType as 対象種別,
+               al.targetName as 内容,
+               al.details as 詳細
+        ORDER BY al.timestamp DESC
+        LIMIT $limit
+        """
+
+        with driver.session() as session:
+            result = session.run(query, client_name=client_name, limit=limit)
+            history = [record.data() for record in result]
+
+            if not history:
+                return f"'{client_name}' さんの変更履歴が見つかりませんでした。"
+
+            return json.dumps({
+                "クライアント": client_name,
+                "📜 変更履歴": f"{len(history)}件",
+                "履歴": history
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"変更履歴取得エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
 # メイン実行
 # =============================================================================
 
