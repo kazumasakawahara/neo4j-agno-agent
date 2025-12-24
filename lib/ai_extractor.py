@@ -6,11 +6,19 @@
 import os
 import re
 import json
+import sys
 from dotenv import load_dotenv
 from agno.agent import Agent
 from agno.models.google import Gemini
 
 load_dotenv()
+
+
+# --- ログ出力 ---
+def log(message: str, level: str = "INFO"):
+    """ログ出力（標準エラー出力）"""
+    sys.stderr.write(f"[AI_Extractor:{level}] {message}\n")
+    sys.stderr.flush()
 
 # =============================================================================
 # AI抽出用プロンプト（マニフェスト準拠）
@@ -204,19 +212,23 @@ def extract_from_text(text: str, client_name: str = None) -> dict | None:
         prompt_text = f"【対象クライアント: {client_name}】\n\n{text}"
     
     try:
+        log(f"テキスト抽出開始（{len(text)}文字）")
         response = agent.run(
             f"以下のテキストから情報を抽出してJSON形式で出力してください：\n\n{prompt_text}"
         )
-        
+
         extracted = parse_json_from_response(response.content)
-        
+
         if extracted:
             # 追記モードの場合、クライアント名を設定
             if client_name and extracted.get('client'):
                 extracted['client']['name'] = client_name
+            log(f"抽出成功: クライアント={extracted.get('client', {}).get('name', '不明')}")
             return extracted
-        
+
+        log("JSONパース失敗: AIレスポンスからJSONを抽出できませんでした", "WARN")
         return None
-        
-    except Exception:
+
+    except Exception as e:
+        log(f"抽出エラー: {type(e).__name__}: {e}", "ERROR")
         return None

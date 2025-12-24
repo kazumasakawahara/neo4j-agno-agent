@@ -138,10 +138,14 @@ Available Claude Desktop commands:
 - `get_database_stats`: Database statistics
 - `run_cypher_query`: Custom Cypher execution
 
-**支援記録系（NEW）:**
+**支援記録系:**
 - `add_support_log`: 物語風テキストから支援記録を自動抽出・登録
 - `get_support_logs`: クライアントの支援記録履歴を取得
 - `discover_care_patterns`: 効果的なケアパターンを自動発見
+
+**監査ログ系:**
+- `get_audit_logs`: 操作履歴（誰が・いつ・何を変更）を取得
+- `get_client_change_history`: クライアント別の変更履歴を取得
 
 ### SOS Emergency Notification Flow
 
@@ -193,17 +197,31 @@ neo4j-agno-agent/
 ├── app_narrative.py        # Main Streamlit UI
 ├── server.py               # MCP server for Claude Desktop
 ├── lib/                    # Shared libraries (import from here)
-│   ├── db_operations.py    # All Neo4j operations
+│   ├── db_operations.py    # All Neo4j operations (+ audit logging)
 │   ├── ai_extractor.py     # Gemini extraction logic
 │   ├── file_readers.py     # File format parsers
 │   └── utils.py            # Utilities and session state
 ├── sos/                    # Emergency notification system
 │   ├── api_server.py       # FastAPI server
 │   └── app/                # Mobile app static files
+├── scripts/                # Utility scripts
+│   └── backup.sh           # Database backup script
 ├── docker-compose.yml      # Neo4j container config
 ├── pyproject.toml          # Dependencies (uv-managed)
 └── docs/                   # Documentation
 ```
+
+### Backup & Recovery
+
+```bash
+# Manual backup
+./scripts/backup.sh
+
+# Scheduled backup (cron example: daily at 3 AM)
+0 3 * * * cd /path/to/neo4j-agno-agent && ./scripts/backup.sh
+```
+
+Backups are stored in `neo4j_backup/` and retained for 30 days.
 
 ## Important Constraints
 

@@ -149,7 +149,15 @@ NEO4J_PASSWORD=password
 
 LINE_CHANNEL_ACCESS_TOKEN=ここに取得したトークンを貼り付け
 LINE_GROUP_ID=ここにグループIDを貼り付け
+
+# セキュリティ設定（本番環境では必ず設定）
+# SOSアプリからのアクセスを許可するオリジン（カンマ区切りで複数指定可）
+# 例: https://example.com,https://app.example.com
+CORS_ORIGINS=
 ```
+
+> ⚠️ **セキュリティ注意**: `CORS_ORIGINS`を設定しない場合、すべてのオリジンからのアクセスが許可されます。
+> 本番環境では、SOSアプリをホスティングするドメインを指定してください。
 
 **グループIDの取得方法:**
 グループIDは、公式アカウントがグループに参加した際のWebhookイベントから取得できます。

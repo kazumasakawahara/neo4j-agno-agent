@@ -260,53 +260,53 @@ def search_emergency_info(client_name: str, situation: str = "") -> str:
     """
     try:
         log(f"緊急検索: {client_name}, 状況: {situation}")
-        
-        # 状況フィルタの構築
-        situation_filter = ""
-        if situation:
-            situation_filter = f"AND (con.name CONTAINS '{situation}' OR cp.category CONTAINS '{situation}' OR ng.action CONTAINS '{situation}')"
-        
-        query = f"""
+
+        # パラメータ化されたクエリ（Cypherインジェクション対策）
+        # situation が指定された場合は関連フィルタを適用
+        query = """
         // 1. 禁忌事項（最優先）
-        OPTIONAL MATCH (c:Client)-[:MUST_AVOID]->(ng:NgAction)
+        MATCH (c:Client)
         WHERE c.name CONTAINS $name
+        OPTIONAL MATCH (c)-[:MUST_AVOID]->(ng:NgAction)
+        WHERE $situation = '' OR ng.action CONTAINS $situation
         OPTIONAL MATCH (ng)-[:IN_CONTEXT]->(ngCon:Condition)
-        WITH c, collect(DISTINCT {{
+        WITH c, collect(DISTINCT {
             action: ng.action,
             reason: ng.reason,
             riskLevel: ng.riskLevel,
             context: ngCon.name
-        }}) AS ngActions
-        
+        }) AS ngActions
+
         // 2. 推奨ケア
         OPTIONAL MATCH (c)-[:REQUIRES]->(cp:CarePreference)
+        WHERE $situation = '' OR cp.category CONTAINS $situation
         OPTIONAL MATCH (cp)-[:ADDRESSES]->(cpCon:Condition)
-        WITH c, ngActions, collect(DISTINCT {{
+        WITH c, ngActions, collect(DISTINCT {
             category: cp.category,
             instruction: cp.instruction,
             priority: cp.priority,
             forCondition: cpCon.name
-        }}) AS carePrefs
-        
+        }) AS carePrefs
+
         // 3. 緊急連絡先（ランク順）
         OPTIONAL MATCH (c)-[kpRel:HAS_KEY_PERSON]->(kp:KeyPerson)
-        WITH c, ngActions, carePrefs, collect(DISTINCT {{
+        WITH c, ngActions, carePrefs, collect(DISTINCT {
             rank: kpRel.rank,
             name: kp.name,
             relationship: kp.relationship,
             phone: kp.phone,
             role: kp.role
-        }}) AS keyPersons
-        
+        }) AS keyPersons
+
         // 4. かかりつけ医
         OPTIONAL MATCH (c)-[:TREATED_AT]->(h:Hospital)
-        WITH c, ngActions, carePrefs, keyPersons, collect(DISTINCT {{
+        WITH c, ngActions, carePrefs, keyPersons, collect(DISTINCT {
             name: h.name,
             specialty: h.specialty,
             phone: h.phone,
             doctor: h.doctor
-        }}) AS hospitals
-        
+        }) AS hospitals
+
         // 5. 法的代理人
         OPTIONAL MATCH (c)-[:HAS_LEGAL_REP]->(g:Guardian)
 
@@ -318,15 +318,15 @@ def search_emergency_info(client_name: str, situation: str = "") -> str:
             carePrefs AS 推奨ケア,
             keyPersons AS 緊急連絡先,
             hospitals AS かかりつけ医,
-            collect(DISTINCT {{
+            collect(DISTINCT {
                 name: g.name,
                 type: g.type,
                 phone: g.phone
-            }}) AS 法的代理人
+            }) AS 法的代理人
         """
-        
+
         with driver.session() as session:
-            result = session.run(query, name=client_name)
+            result = session.run(query, name=client_name, situation=situation or '')
             data = [record.data() for record in result]
             
             if not data or not data[0].get('client'):
@@ -374,17 +374,16 @@ def check_renewal_dates(days_ahead: int = 90, client_name: str = "") -> str:
     """
     try:
         log(f"期限チェック: {days_ahead}日以内, クライアント: {client_name or '全員'}")
-        
-        name_filter = f"AND c.name CONTAINS '{client_name}'" if client_name else ""
-        
-        query = f"""
+
+        # パラメータ化されたクエリ（Cypherインジェクション対策）
+        query = """
         MATCH (c:Client)-[:HAS_CERTIFICATE]->(cert:Certificate)
         WHERE cert.nextRenewalDate IS NOT NULL
-        {name_filter}
-        WITH c, cert, 
+          AND ($client_name = '' OR c.name CONTAINS $client_name)
+        WITH c, cert,
              duration.inDays(date(), cert.nextRenewalDate).days AS daysUntilRenewal
         WHERE daysUntilRenewal <= $days AND daysUntilRenewal >= 0
-        RETURN 
+        RETURN
             c.name AS クライアント,
             cert.type AS 証明書種類,
             cert.grade AS 等級,
@@ -392,9 +391,9 @@ def check_renewal_dates(days_ahead: int = 90, client_name: str = "") -> str:
             daysUntilRenewal AS 残り日数
         ORDER BY daysUntilRenewal ASC
         """
-        
+
         with driver.session() as session:
-            result = session.run(query, days=days_ahead)
+            result = session.run(query, days=days_ahead, client_name=client_name or '')
             data = [record.data() for record in result]
             
             if not data:
@@ -663,8 +662,12 @@ def add_support_log(
         log(f"支援記録追加: {client_name}")
 
         # AI抽出を使って構造化
+        # 動的にプロジェクトルートをパスに追加（ハードコードを回避）
         import sys
-        sys.path.append('/Users/k-kawahara/Dev-Work/neo4j-agno-agent')
+        from pathlib import Path
+        project_root = Path(__file__).parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
         from lib.ai_extractor import extract_from_text
         from lib.db_operations import register_to_database
 
@@ -807,6 +810,132 @@ def discover_care_patterns(
 
     except Exception as e:
         log(f"パターン発見エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール10: 監査ログ取得
+# =============================================================================
+
+@mcp.tool()
+def get_audit_logs(
+    client_name: str = "",
+    user_name: str = "",
+    limit: int = 30
+) -> str:
+    """
+    監査ログ（操作履歴）を取得します。
+
+    誰が・いつ・何を変更したかを確認できます。
+    権利擁護の観点から、データの変更履歴を追跡するために使用します。
+
+    Args:
+        client_name: クライアント名でフィルタ（任意、部分一致）
+        user_name: 操作者名でフィルタ（任意、部分一致）
+        limit: 取得件数（デフォルト: 30件、最大100件）
+
+    Returns:
+        監査ログの一覧（JSON形式）
+
+    使用例:
+        - 「最近の操作履歴を見せて」
+        - 「山田健太さんに関する変更履歴」
+        - 「田中さんが行った操作一覧」
+    """
+    try:
+        log(f"監査ログ取得: client={client_name}, user={user_name}")
+
+        limit = min(limit, 100)
+
+        query = """
+        MATCH (al:AuditLog)
+        WHERE ($client_name = '' OR al.clientName CONTAINS $client_name)
+          AND ($user_name = '' OR al.user CONTAINS $user_name)
+        RETURN al.timestamp as 日時,
+               al.user as 操作者,
+               al.action as 操作,
+               al.targetType as 対象種別,
+               al.targetName as 対象名,
+               al.details as 詳細,
+               al.clientName as クライアント
+        ORDER BY al.timestamp DESC
+        LIMIT $limit
+        """
+
+        with driver.session() as session:
+            result = session.run(query,
+                client_name=client_name or "",
+                user_name=user_name or "",
+                limit=limit
+            )
+            logs = [record.data() for record in result]
+
+            if not logs:
+                return "監査ログが見つかりませんでした。"
+
+            return json.dumps({
+                "📋 監査ログ": f"{len(logs)}件",
+                "履歴": logs
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"監査ログ取得エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+@mcp.tool()
+def get_client_change_history(
+    client_name: str,
+    limit: int = 20
+) -> str:
+    """
+    特定クライアントに関する変更履歴を取得します。
+
+    クライアントの情報がいつ・誰によって変更されたかを時系列で確認できます。
+    引き継ぎ時や問題発生時の原因調査に活用できます。
+
+    Args:
+        client_name: クライアント名
+        limit: 取得件数（デフォルト: 20件）
+
+    Returns:
+        変更履歴（JSON形式）
+
+    使用例:
+        - 「山田健太さんの変更履歴を確認」
+        - 「佐々木さんのデータ更新履歴」
+    """
+    try:
+        log(f"変更履歴取得: {client_name}")
+
+        query = """
+        MATCH (al:AuditLog)
+        WHERE al.clientName CONTAINS $client_name
+        RETURN al.timestamp as 日時,
+               al.user as 操作者,
+               al.action as 操作,
+               al.targetType as 対象種別,
+               al.targetName as 内容,
+               al.details as 詳細
+        ORDER BY al.timestamp DESC
+        LIMIT $limit
+        """
+
+        with driver.session() as session:
+            result = session.run(query, client_name=client_name, limit=limit)
+            history = [record.data() for record in result]
+
+            if not history:
+                return f"'{client_name}' さんの変更履歴が見つかりませんでした。"
+
+            return json.dumps({
+                "クライアント": client_name,
+                "📜 変更履歴": f"{len(history)}件",
+                "履歴": history
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"変更履歴取得エラー: {e}")
         return f"エラーが発生しました: {e}"
 
 

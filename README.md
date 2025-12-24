@@ -44,11 +44,15 @@ neo4j-agno-agent/
 ├── lib/                   # 共通ライブラリ
 │   ├── __init__.py
 │   ├── db_operations.py   # Neo4j操作
-│   ├── ai_extractor.py    # AI構造化
+│   ├── ai_extractor.py    # AI構造化（ログ出力対応）
 │   ├── utils.py           # ユーティリティ
 │   └── file_readers.py    # ファイル読み込み
+├── sos/                   # 緊急SOSシステム
+│   ├── api_server.py      # FastAPI緊急通知サーバー
+│   └── app/               # 本人用モバイルアプリ
 ├── docker-compose.yml     # Neo4jコンテナ設定
 ├── pyproject.toml         # 依存関係
+├── SETUP_GUIDE.md         # 団体向けセットアップガイド
 └── .env                   # 環境変数（非公開）
 ```
 
@@ -66,10 +70,21 @@ cd neo4j-agno-agent
 `.env`ファイルを作成：
 
 ```env
+# データベース接続
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=your_password
+
+# AI構造化
 GEMINI_API_KEY=your_gemini_api_key
+
+# SOS緊急通知（オプション）
+LINE_CHANNEL_ACCESS_TOKEN=your_line_token
+LINE_GROUP_ID=your_line_group_id
+
+# セキュリティ（本番環境では必須）
+# SOSアプリからのアクセスを許可するオリジン（カンマ区切り）
+CORS_ORIGINS=https://your-app-domain.com
 ```
 
 ### 3. Neo4jを起動
@@ -136,6 +151,35 @@ Claude Desktopに`support-db`サーバーを設定後、以下のような質問
 | `list_clients` | クライアント一覧を取得 |
 | `get_database_stats` | データベース統計を取得 |
 | `run_cypher_query` | カスタムCypherクエリを実行 |
+| `add_support_log` | 物語風テキストから支援記録を自動登録 |
+| `get_support_logs` | クライアントの支援記録履歴を取得 |
+| `discover_care_patterns` | 効果的なケアパターンを自動発見 |
+| `get_audit_logs` | 操作履歴（監査ログ）を取得 |
+| `get_client_change_history` | クライアント別の変更履歴を取得 |
+
+## 🔒 監査ログ・バックアップ
+
+### 監査ログ
+
+データの変更履歴を自動記録します（誰が・いつ・何を変更したか）：
+
+```
+「山田健太さんの変更履歴を確認」
+→ 2024-01-15 田中 CREATE NgAction "後ろから声をかけない"
+→ 2024-01-14 佐藤 CREATE Client 基本情報登録
+```
+
+### バックアップ
+
+```bash
+# 手動バックアップ
+./scripts/backup.sh
+
+# 定期バックアップ（cron設定例：毎日AM3時）
+0 3 * * * cd /path/to/neo4j-agno-agent && ./scripts/backup.sh
+```
+
+バックアップは `neo4j_backup/` ディレクトリに保存され、30日間保持されます。
 
 ## 📋 対応ファイル形式
 
