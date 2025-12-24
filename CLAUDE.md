@@ -27,6 +27,7 @@ A Neo4j-based graph database system for managing support information for individ
 
 2. **UI Applications**:
    - `app_narrative.py`: Streamlit data entry UI with narrative-style input and file upload
+   - `app_quick_log.py`: Mobile-friendly quick logging UI (record only exceptional events)
    - `sos/app/`: Mobile SOS button app for emergency notifications
 
 3. **Backend Services**:
@@ -195,6 +196,7 @@ Available Claude Desktop commands:
 ```
 neo4j-agno-agent/
 ├── app_narrative.py        # Main Streamlit UI
+├── app_quick_log.py        # Quick logging UI (mobile-friendly)
 ├── server.py               # MCP server for Claude Desktop
 ├── lib/                    # Shared libraries (import from here)
 │   ├── db_operations.py    # All Neo4j operations (+ audit logging)
@@ -287,13 +289,20 @@ Over time, the system discovers patterns: "When X happens, Y works best."
 
 ### Usage Workflow
 
-**Option 1: Streamlit UI**
+**Option 1: Quick Log (Mobile-Friendly)**
+```bash
+uv run streamlit run app_quick_log.py
+# 30秒で記録完了。「普通の日」は記録不要。
+# 「😊 とても良い日！」or「🤔 気になることあり」のみ記録
+```
+
+**Option 2: Streamlit UI (Detailed)**
 ```bash
 uv run streamlit run app_narrative.py
 # Input narrative text → AI extracts support logs → View in "支援記録" tab
 ```
 
-**Option 2: Claude Desktop (MCP)**
+**Option 3: Claude Desktop (MCP)**
 ```
 User: "山田健太さんの記録を追加: 今日、サイレンで驚いてパニック。テレビを消して5分見守ったら落ち着いた。効果的でした。"
 Claude: add_support_log(client_name="山田健太", narrative_text="...")
