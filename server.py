@@ -151,6 +151,32 @@ SCHEMA_DOCUMENTATION = """
   - contact: string     // 連絡先
   - address: string     // 住所
 
+:ServiceProvider (福祉サービス事業所) ★事業所検索用★
+  - name: string            // 事業所名
+  - serviceType: string     // サービス種類（居宅介護/生活介護/就労継続支援A型/就労継続支援B型/グループホーム等）
+  - address: string         // 所在地
+  - city: string            // 市区町村
+  - phone: string           // 電話番号
+  - fax: string             // FAX番号（任意）
+  - capacity: integer       // 定員
+  - currentUsers: integer   // 現在利用者数（任意）
+  - availability: string    // 空き状況（'空きあり' / '要相談' / '満員' / '未確認'）
+  - features: string        // 特色・特徴
+  - targetDisability: string// 対象障害種別（知的/精神/身体/重症心身等）
+  - businessHours: string   // 営業時間
+  - holidays: string        // 休業日
+  - wamnetId: string        // WAM NET事業所ID（任意）
+  - updatedAt: datetime     // 情報更新日
+
+:ProviderFeedback (事業所口コミ・評価) ★支援者間情報共有★
+  - feedbackId: string      // 一意識別子
+  - category: string        // カテゴリ（行動障害対応/コミュニケーション/環境/送迎/食事/医療連携等）
+  - content: string         // 口コミ内容
+  - rating: string          // 評価（'◎良い' / '○普通' / '△課題あり' / '×不可'）
+  - source: string          // 情報源（支援者名 or '匿名'）
+  - date: date              // 登録日
+  - isConfirmed: boolean    // 確認済みか
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ■ 第4の柱：危機管理ネットワーク (Safety Net)
   「誰が守るか」を定義。緊急時の指揮命令系統と法的権限。
@@ -207,6 +233,14 @@ SCHEMA_DOCUMENTATION = """
 (:Client)-[:HAS_LEGAL_REP]->(:Guardian)
 (:Client)-[:SUPPORTED_BY]->(:Supporter)
 (:Client)-[:TREATED_AT]->(:Hospital)
+
+【事業所利用】
+(:Client)-[:USES_SERVICE {startDate, endDate, status, note}]->(:ServiceProvider)
+  // status: 'Active'(利用中) / 'Pending'(調整中) / 'Ended'(利用終了)
+
+【事業所口コミ・評価】
+(:ServiceProvider)-[:HAS_FEEDBACK]->(:ProviderFeedback)
+(:Supporter)-[:WROTE]->(:ProviderFeedback)  // 任意（匿名の場合はなし）
 """
 
 # =============================================================================
@@ -936,6 +970,767 @@ def get_client_change_history(
 
     except Exception as e:
         log(f"変更履歴取得エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール12: 事業所検索
+# =============================================================================
+
+@mcp.tool()
+def search_service_providers(
+    service_type: str = "",
+    city: str = "",
+    availability: str = "",
+    target_disability: str = "",
+    keyword: str = "",
+    limit: int = 20
+) -> str:
+    """
+    福祉サービス事業所を検索します。
+
+    サービス種類、地域、空き状況、対象障害種別などで絞り込み検索が可能です。
+    WAM NETから取得した事業所情報を基に、クライアントに最適な事業所を探すことができます。
+
+    Args:
+        service_type: サービス種類（例: '居宅介護', '生活介護', '就労継続支援A型', '就労継続支援B型', 'グループホーム'）
+        city: 市区町村（例: '北九州市', '福岡市'）
+        availability: 空き状況（'空きあり' / '要相談' / '満員'）
+        target_disability: 対象障害種別（'知的', '精神', '身体', '重症心身'）
+        keyword: フリーワード検索（事業所名、特色など）
+        limit: 取得件数（デフォルト: 20件、最大50件）
+
+    Returns:
+        検索結果の事業所リスト（JSON形式）
+
+    使用例:
+        - 「北九州市の生活介護事業所を検索」
+        - 「空きのあるグループホームを探して」
+        - 「知的障害対応の就労B型はある？」
+    """
+    try:
+        log(f"事業所検索: type={service_type}, city={city}, avail={availability}")
+
+        limit = min(limit, 50)
+
+        # 動的にWHERE条件を構築
+        conditions = ["1=1"]  # 常に真の条件（ベース）
+        
+        if service_type:
+            conditions.append("sp.serviceType CONTAINS $service_type")
+        if city:
+            conditions.append("sp.city CONTAINS $city")
+        if availability:
+            conditions.append("sp.availability = $availability")
+        if target_disability:
+            conditions.append("sp.targetDisability CONTAINS $target_disability")
+        if keyword:
+            conditions.append("(sp.name CONTAINS $keyword OR sp.features CONTAINS $keyword)")
+
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
+        MATCH (sp:ServiceProvider)
+        WHERE {where_clause}
+        RETURN sp.name AS 事業所名,
+               sp.serviceType AS サービス種類,
+               sp.city AS 市区町村,
+               sp.address AS 住所,
+               sp.phone AS 電話,
+               sp.capacity AS 定員,
+               sp.currentUsers AS 現利用者数,
+               sp.availability AS 空き状況,
+               sp.targetDisability AS 対象障害,
+               sp.features AS 特色,
+               sp.businessHours AS 営業時間,
+               sp.holidays AS 休業日
+        ORDER BY sp.availability ASC, sp.name
+        LIMIT $limit
+        """
+
+        with driver.session() as session:
+            result = session.run(
+                query,
+                service_type=service_type or "",
+                city=city or "",
+                availability=availability or "",
+                target_disability=target_disability or "",
+                keyword=keyword or "",
+                limit=limit
+            )
+            providers = [record.data() for record in result]
+
+            if not providers:
+                return "条件に合う事業所が見つかりませんでした。検索条件を変えてお試しください。"
+
+            # 空き状況でグループ化
+            available = [p for p in providers if p.get('空き状況') == '空きあり']
+            consulting = [p for p in providers if p.get('空き状況') == '要相談']
+            full = [p for p in providers if p.get('空き状況') == '満員']
+            unknown = [p for p in providers if p.get('空き状況') not in ['空きあり', '要相談', '満員']]
+
+            return json.dumps({
+                "🏢 事業所検索結果": f"{len(providers)}件",
+                "検索条件": {
+                    "サービス種類": service_type or "指定なし",
+                    "地域": city or "指定なし",
+                    "空き状況": availability or "指定なし",
+                    "対象障害": target_disability or "指定なし"
+                },
+                "🟢 空きあり": available if available else "なし",
+                "🟡 要相談": consulting if consulting else "なし",
+                "🔴 満員": full if full else "なし",
+                "❓ 未確認": unknown if unknown else "なし"
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"事業所検索エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール13: クライアントと事業所の紐付け
+# =============================================================================
+
+@mcp.tool()
+def link_client_to_provider(
+    client_name: str,
+    provider_name: str,
+    start_date: str = "",
+    status: str = "Active",
+    note: str = ""
+) -> str:
+    """
+    クライアントを事業所に紐付けます（サービス利用開始）。
+
+    新規サービスの利用開始時に、クライアントと事業所を関連付けます。
+    利用状況の変更や利用終了の記録も可能です。
+
+    Args:
+        client_name: クライアント名
+        provider_name: 事業所名
+        start_date: 利用開始日（YYYY-MM-DD形式、空の場合は今日）
+        status: 利用状況（'Active'=利用中 / 'Pending'=調整中 / 'Ended'=利用終了）
+        note: 備考（任意）
+
+    Returns:
+        登録結果のメッセージ
+
+    使用例:
+        - 「山田さんをさくら作業所に登録して」
+        - 「佐藤さんのひまわりホーム利用を開始、開始日は2025-01-15」
+    """
+    try:
+        log(f"事業所紐付け: {client_name} -> {provider_name}")
+
+        # デフォルトの開始日は今日
+        if not start_date:
+            start_date = date.today().isoformat()
+
+        query = """
+        MATCH (c:Client), (sp:ServiceProvider)
+        WHERE c.name CONTAINS $client_name
+          AND sp.name CONTAINS $provider_name
+        MERGE (c)-[r:USES_SERVICE]->(sp)
+        ON CREATE SET 
+            r.startDate = date($start_date),
+            r.status = $status,
+            r.note = $note,
+            r.createdAt = datetime()
+        ON MATCH SET
+            r.status = $status,
+            r.note = $note,
+            r.updatedAt = datetime()
+        RETURN c.name AS クライアント,
+               sp.name AS 事業所,
+               sp.serviceType AS サービス種類,
+               r.startDate AS 利用開始日,
+               r.status AS 状況
+        """
+
+        with driver.session() as session:
+            result = session.run(
+                query,
+                client_name=client_name,
+                provider_name=provider_name,
+                start_date=start_date,
+                status=status,
+                note=note
+            )
+            data = [record.data() for record in result]
+
+            if not data:
+                return f"❌ クライアント「{client_name}」または事業所「{provider_name}」が見つかりませんでした。"
+
+            return json.dumps({
+                "✅ サービス利用登録完了": data[0],
+                "備考": note if note else "なし"
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"事業所紐付けエラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール14: クライアントの利用事業所一覧
+# =============================================================================
+
+@mcp.tool()
+def get_client_providers(client_name: str) -> str:
+    """
+    クライアントが利用している事業所の一覧を取得します。
+
+    現在利用中のサービス、調整中のサービス、過去に利用していたサービスを
+    一覧で確認できます。
+
+    Args:
+        client_name: クライアント名（部分一致可）
+
+    Returns:
+        利用事業所の一覧（JSON形式）
+
+    使用例:
+        - 「山田さんの利用事業所を教えて」
+        - 「佐藤さんはどこのサービスを使ってる？」
+    """
+    try:
+        log(f"利用事業所取得: {client_name}")
+
+        query = """
+        MATCH (c:Client)-[r:USES_SERVICE]->(sp:ServiceProvider)
+        WHERE c.name CONTAINS $client_name
+        RETURN sp.name AS 事業所名,
+               sp.serviceType AS サービス種類,
+               sp.phone AS 電話,
+               sp.address AS 住所,
+               r.startDate AS 利用開始日,
+               r.endDate AS 利用終了日,
+               r.status AS 状況,
+               r.note AS 備考
+        ORDER BY r.status, r.startDate DESC
+        """
+
+        with driver.session() as session:
+            result = session.run(query, client_name=client_name)
+            providers = [record.data() for record in result]
+
+            if not providers:
+                return f"'{client_name}' さんの利用事業所が登録されていません。"
+
+            # ステータスでグループ化
+            active = [p for p in providers if p.get('状況') == 'Active']
+            pending = [p for p in providers if p.get('状況') == 'Pending']
+            ended = [p for p in providers if p.get('状況') == 'Ended']
+
+            return json.dumps({
+                "クライアント": client_name,
+                "🟢 利用中": active if active else "なし",
+                "🟡 調整中": pending if pending else "なし",
+                "⚪ 利用終了": ended if ended else "なし"
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"利用事業所取得エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール15: 代替事業所の検索
+# =============================================================================
+
+@mcp.tool()
+def find_alternative_providers(
+    client_name: str,
+    service_type: str = "",
+    reason: str = ""
+) -> str:
+    """
+    クライアントの代替事業所を検索します。
+
+    現在利用中のサービスと同種の事業所で、まだ利用していないものを探します。
+    事業所の閉鎖時や、より良い環境を探す際に利用します。
+
+    Args:
+        client_name: クライアント名
+        service_type: 特定のサービス種類を検索する場合に指定（任意）
+        reason: 検索理由（記録用、任意）
+
+    Returns:
+        代替候補の事業所リスト（JSON形式）
+
+    使用例:
+        - 「山田さんの代替事業所を探して」
+        - 「佐藤さんのグループホームの代わりを探したい」
+        - 「田中さんの生活介護、事業所閉鎖のため代替を探す」
+    """
+    try:
+        log(f"代替事業所検索: {client_name}, type={service_type}")
+
+        # まずクライアントの現在の利用サービスを取得
+        current_query = """
+        MATCH (c:Client)-[r:USES_SERVICE]->(sp:ServiceProvider)
+        WHERE c.name CONTAINS $client_name
+          AND r.status IN ['Active', 'Pending']
+        RETURN c.name AS client_name,
+               c.dob AS dob,
+               sp.serviceType AS service_type,
+               sp.city AS city,
+               sp.name AS current_provider
+        """
+
+        with driver.session() as session:
+            current_result = session.run(current_query, client_name=client_name)
+            current_services = [record.data() for record in current_result]
+
+            if not current_services and not service_type:
+                return f"'{client_name}' さんの現在の利用サービスが見つかりません。\nサービス種類を指定して再検索してください。"
+
+            # 検索対象のサービス種類と地域を決定
+            if service_type:
+                target_types = [service_type]
+                target_city = current_services[0].get('city', '') if current_services else ''
+            else:
+                target_types = list(set([s['service_type'] for s in current_services]))
+                target_city = current_services[0].get('city', '') if current_services else ''
+
+            # 現在利用中の事業所名を取得（除外用）
+            current_provider_names = [s['current_provider'] for s in current_services]
+
+            # 代替事業所を検索
+            alt_query = """
+            MATCH (sp:ServiceProvider)
+            WHERE sp.serviceType IN $target_types
+              AND NOT sp.name IN $exclude_names
+              AND ($city = '' OR sp.city CONTAINS $city)
+            RETURN sp.name AS 事業所名,
+                   sp.serviceType AS サービス種類,
+                   sp.city AS 市区町村,
+                   sp.address AS 住所,
+                   sp.phone AS 電話,
+                   sp.capacity AS 定員,
+                   sp.availability AS 空き状況,
+                   sp.features AS 特色
+            ORDER BY 
+                CASE sp.availability 
+                    WHEN '空きあり' THEN 1 
+                    WHEN '要相談' THEN 2 
+                    ELSE 3 
+                END,
+                sp.name
+            LIMIT 20
+            """
+
+            alt_result = session.run(
+                alt_query,
+                target_types=target_types,
+                exclude_names=current_provider_names,
+                city=target_city
+            )
+            alternatives = [record.data() for record in alt_result]
+
+            if not alternatives:
+                return json.dumps({
+                    "クライアント": client_name,
+                    "検索サービス": target_types,
+                    "結果": "代替候補の事業所が見つかりませんでした。",
+                    "💡 提案": "地域を広げてsearch_service_providersで検索してみてください。"
+                }, ensure_ascii=False, indent=2)
+
+            # 空き状況でグループ化
+            available = [p for p in alternatives if p.get('空き状況') == '空きあり']
+            consulting = [p for p in alternatives if p.get('空き状況') == '要相談']
+            others = [p for p in alternatives if p.get('空き状況') not in ['空きあり', '要相談']]
+
+            return json.dumps({
+                "🔄 代替事業所検索結果": {
+                    "クライアント": client_name,
+                    "検索サービス": target_types,
+                    "検索地域": target_city or "全地域",
+                    "検索理由": reason if reason else "指定なし"
+                },
+                "現在利用中の事業所": current_provider_names,
+                f"🟢 空きあり ({len(available)}件)": available if available else "なし",
+                f"🟡 要相談 ({len(consulting)}件)": consulting if consulting else "なし",
+                f"❓ その他 ({len(others)}件)": others if others else "なし"
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"代替事業所検索エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール16: 事業所口コミ登録
+# =============================================================================
+
+@mcp.tool()
+def add_provider_feedback(
+    provider_name: str,
+    category: str,
+    content: str,
+    rating: str = "○普通",
+    source: str = "匿名"
+) -> str:
+    """
+    事業所への口コミ・評価を登録します。
+
+    支援者間で事業所の情報を共有するための機能です。
+    「行動障害への対応が難しかった」「送迎が柔軟」などの情報を記録できます。
+
+    Args:
+        provider_name: 事業所名（部分一致可）
+        category: カテゴリ（行動障害対応/コミュニケーション/環境/送迎/食事/医療連携/その他）
+        content: 口コミ内容
+        rating: 評価（'◎良い' / '○普通' / '△課題あり' / '×不可'）
+        source: 情報源（支援者名 or '匿名'）
+
+    Returns:
+        登録結果のメッセージ
+
+    使用例:
+        - 「nestワークSTATIONに口コミ登録: 行動障害対応、評価◎、パニック時の対応が上手でした」
+        - 「さくら作業所の口コミ: 送迎カテゴリ、評価△、急な変更に対応できなかった」
+    """
+    try:
+        log(f"口コミ登録: {provider_name}, {category}, {rating}")
+
+        # フィードバックIDを生成
+        feedback_id = f"FB_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+        query = """
+        MATCH (sp:ServiceProvider)
+        WHERE sp.name CONTAINS $provider_name
+        CREATE (fb:ProviderFeedback {
+            feedbackId: $feedback_id,
+            category: $category,
+            content: $content,
+            rating: $rating,
+            source: $source,
+            date: date(),
+            isConfirmed: false,
+            createdAt: datetime()
+        })
+        CREATE (sp)-[:HAS_FEEDBACK]->(fb)
+        RETURN sp.name AS 事業所名,
+               fb.feedbackId AS フィードバックID,
+               fb.category AS カテゴリ,
+               fb.rating AS 評価,
+               fb.content AS 内容
+        """
+
+        with driver.session() as session:
+            result = session.run(
+                query,
+                provider_name=provider_name,
+                feedback_id=feedback_id,
+                category=category,
+                content=content,
+                rating=rating,
+                source=source
+            )
+            data = [record.data() for record in result]
+
+            if not data:
+                return f"❌ 事業所「{provider_name}」が見つかりませんでした。"
+
+            return json.dumps({
+                "✅ 口コミ登録完了": data[0],
+                "情報源": source
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"口コミ登録エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール17: 事業所口コミ取得
+# =============================================================================
+
+@mcp.tool()
+def get_provider_feedbacks(
+    provider_name: str,
+    category: str = "",
+    limit: int = 20
+) -> str:
+    """
+    事業所の口コミ・評価を取得します。
+
+    事業所に対する支援者の評価やコメントを確認できます。
+    クライアントに合った事業所を選ぶ際の参考になります。
+
+    Args:
+        provider_name: 事業所名（部分一致可）
+        category: カテゴリで絞り込み（任意）
+        limit: 取得件数（デフォルト: 20件）
+
+    Returns:
+        口コミ一覧（JSON形式）
+
+    使用例:
+        - 「nestワークSTATIONの口コミを見せて」
+        - 「さくら作業所の行動障害対応の評価は？」
+    """
+    try:
+        log(f"口コミ取得: {provider_name}, category={category}")
+
+        # カテゴリフィルタを構築
+        category_filter = "AND fb.category CONTAINS $category" if category else ""
+
+        query = f"""
+        MATCH (sp:ServiceProvider)-[:HAS_FEEDBACK]->(fb:ProviderFeedback)
+        WHERE sp.name CONTAINS $provider_name
+        {category_filter}
+        RETURN sp.name AS 事業所名,
+               sp.serviceType AS サービス種類,
+               fb.category AS カテゴリ,
+               fb.rating AS 評価,
+               fb.content AS 内容,
+               fb.source AS 情報源,
+               fb.date AS 登録日,
+               fb.isConfirmed AS 確認済み
+        ORDER BY fb.date DESC
+        LIMIT $limit
+        """
+
+        with driver.session() as session:
+            result = session.run(
+                query,
+                provider_name=provider_name,
+                category=category or "",
+                limit=limit
+            )
+            feedbacks = [record.data() for record in result]
+
+            if not feedbacks:
+                return f"「{provider_name}」の口コミが見つかりませんでした。"
+
+            # 評価ごとに集計
+            ratings = {}
+            for fb in feedbacks:
+                r = fb.get('評価', '不明')
+                ratings[r] = ratings.get(r, 0) + 1
+
+            return json.dumps({
+                "📝 事業所口コミ": {
+                    "事業所名": feedbacks[0].get('事業所名'),
+                    "サービス種類": feedbacks[0].get('サービス種類'),
+                    "口コミ件数": len(feedbacks)
+                },
+                "📊 評価集計": ratings,
+                "📄 口コミ一覧": feedbacks
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"口コミ取得エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール18: 口コミ評価で事業所検索
+# =============================================================================
+
+@mcp.tool()
+def search_providers_by_feedback(
+    category: str,
+    rating: str = "",
+    service_type: str = "",
+    city: str = "",
+    limit: int = 20
+) -> str:
+    """
+    口コミ評価を基に事業所を検索します。
+
+    「行動障害対応が良い事業所」「送迎の評価が高い事業所」など、
+    口コミ情報を基にクライアントに合った事業所を探せます。
+
+    Args:
+        category: 検索したい口コミカテゴリ（行動障害対応/コミュニケーション/環境/送迎/食事/医療連携）
+        rating: 評価で絞り込み（'◎良い' / '○普通' / '△課題あり'）※任意
+        service_type: サービス種類で絞り込み（任意）
+        city: 地域で絞り込み（任意）
+        limit: 取得件数
+
+    Returns:
+        検索結果の事業所リスト（JSON形式）
+
+    使用例:
+        - 「行動障害対応が良い事業所を探して」
+        - 「送迎の評価が◎のグループホームは？」
+        - 「北九州市でコミュニケーションが得意な生活介護を探して」
+    """
+    try:
+        log(f"口コミ検索: category={category}, rating={rating}")
+
+        # 動的にWHERE条件を構築
+        conditions = ["fb.category CONTAINS $category"]
+        if rating:
+            conditions.append("fb.rating = $rating")
+        if service_type:
+            conditions.append("sp.serviceType CONTAINS $service_type")
+        if city:
+            conditions.append("sp.city CONTAINS $city")
+
+        where_clause = " AND ".join(conditions)
+
+        query = f"""
+        MATCH (sp:ServiceProvider)-[:HAS_FEEDBACK]->(fb:ProviderFeedback)
+        WHERE {where_clause}
+        WITH sp, fb,
+             CASE fb.rating
+                 WHEN '◎良い' THEN 4
+                 WHEN '○普通' THEN 3
+                 WHEN '△課題あり' THEN 2
+                 WHEN '×不可' THEN 1
+                 ELSE 0
+             END AS rating_score
+        WITH sp,
+             count(fb) AS 口コミ件数,
+             avg(rating_score) AS 平均評価スコア,
+             collect(DISTINCT fb.rating) AS 評価一覧,
+             collect(fb.content)[0..3] AS 口コミ例
+        RETURN sp.name AS 事業所名,
+               sp.serviceType AS サービス種類,
+               sp.city AS 市区町村,
+               sp.phone AS 電話,
+               sp.availability AS 空き状況,
+               口コミ件数,
+               round(平均評価スコア * 10) / 10 AS 平均評価,
+               評価一覧,
+               口コミ例
+        ORDER BY 平均評価スコア DESC, 口コミ件数 DESC
+        LIMIT $limit
+        """
+
+        with driver.session() as session:
+            result = session.run(
+                query,
+                category=category,
+                rating=rating or "",
+                service_type=service_type or "",
+                city=city or "",
+                limit=limit
+            )
+            providers = [record.data() for record in result]
+
+            if not providers:
+                return json.dumps({
+                    "検索結果": "条件に合う口コミが登録された事業所が見つかりませんでした。",
+                    "💡 ヒント": "まずは add_provider_feedback で口コミを登録してください。"
+                }, ensure_ascii=False, indent=2)
+
+            return json.dumps({
+                "🔍 口コミ検索結果": {
+                    "検索カテゴリ": category,
+                    "評価フィルタ": rating or "指定なし",
+                    "サービス種類": service_type or "指定なし",
+                    "地域": city or "指定なし",
+                    "ヒット数": len(providers)
+                },
+                "🏆 おすすめ事業所": providers
+            }, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"口コミ検索エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール19: 事業所空き状況更新
+# =============================================================================
+
+@mcp.tool()
+def update_provider_availability(
+    provider_name: str,
+    availability: str,
+    current_users: int = -1,
+    note: str = ""
+) -> str:
+    """
+    事業所の空き状況を更新します。
+
+    WAM NETから取得した事業所情報の空き状況を更新したり、
+    現在の利用者数を記録できます。
+
+    Args:
+        provider_name: 事業所名（部分一致可）
+        availability: 空き状況（'空きあり' / '要相談' / '満員' / '未確認'）
+        current_users: 現在の利用者数（-1の場合は更新しない）
+        note: 備考（任意）
+
+    Returns:
+        更新結果のメッセージ
+
+    使用例:
+        - 「nest地域生活サポートSTATIONの空き状況を『空きあり』に更新」
+        - 「さくら作業所の空き状況を『要相談』に、現在利用者数9名」
+    """
+    try:
+        log(f"空き状況更新: {provider_name} -> {availability}")
+
+        # 空き状況のバリデーション
+        valid_availability = ['空きあり', '要相談', '満員', '未確認']
+        if availability not in valid_availability:
+            return f"❌ 空き状況は {valid_availability} のいずれかを指定してください。"
+
+        # 現在利用者数の更新を含むかどうか
+        if current_users >= 0:
+            query = """
+            MATCH (sp:ServiceProvider)
+            WHERE sp.name CONTAINS $provider_name
+            SET sp.availability = $availability,
+                sp.currentUsers = $current_users,
+                sp.updatedAt = datetime()
+            RETURN sp.name AS 事業所名,
+                   sp.serviceType AS サービス種類,
+                   sp.capacity AS 定員,
+                   sp.currentUsers AS 現在利用者数,
+                   sp.availability AS 空き状況
+            """
+        else:
+            query = """
+            MATCH (sp:ServiceProvider)
+            WHERE sp.name CONTAINS $provider_name
+            SET sp.availability = $availability,
+                sp.updatedAt = datetime()
+            RETURN sp.name AS 事業所名,
+                   sp.serviceType AS サービス種類,
+                   sp.capacity AS 定員,
+                   sp.currentUsers AS 現在利用者数,
+                   sp.availability AS 空き状況
+            """
+
+        with driver.session() as session:
+            result = session.run(
+                query,
+                provider_name=provider_name,
+                availability=availability,
+                current_users=current_users
+            )
+            data = [record.data() for record in result]
+
+            if not data:
+                return f"❌ 事業所「{provider_name}」が見つかりませんでした。"
+
+            # 複数マッチの警告
+            if len(data) > 1:
+                return json.dumps({
+                    "⚠️ 複数の事業所がマッチしました": f"{len(data)}件",
+                    "更新された事業所": data,
+                    "💡 ヒント": "特定の事業所のみ更新する場合は、より正確な名前を指定してください。"
+                }, ensure_ascii=False, indent=2, default=str)
+
+            result_msg = {
+                "✅ 空き状況更新完了": data[0]
+            }
+            if note:
+                result_msg["備考"] = note
+
+            return json.dumps(result_msg, ensure_ascii=False, indent=2, default=str)
+
+    except Exception as e:
+        log(f"空き状況更新エラー: {e}")
         return f"エラーが発生しました: {e}"
 
 
