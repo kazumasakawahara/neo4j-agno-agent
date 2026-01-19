@@ -1,15 +1,24 @@
 """
 親亡き後支援データベース - データベース操作モジュール
 Neo4j接続、クエリ実行、データ登録処理、監査ログ
+
+仮名化対応:
+- クライアントは clientId (UUID) で内部識別
+- 氏名は Identity ノードに分離
+- 表示時のみ結合（resolve_client で解決）
 """
 
 import os
 import sys
 from datetime import date, datetime
+from typing import Optional
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
 
 load_dotenv()
+
+# 仮名化スキーマが有効かどうか（マイグレーション後に True に設定）
+PSEUDONYMIZATION_ENABLED = os.getenv("PSEUDONYMIZATION_ENABLED", "false").lower() == "true"
 
 # --- ログ出力 ---
 def log(message: str, level: str = "INFO"):
@@ -488,3 +497,174 @@ def discover_care_patterns(client_name: str, min_frequency: int = 3):
                frequency as 効果的だった回数
         ORDER BY frequency DESC
     """, {"client_name": client_name, "min_frequency": min_frequency})
+
+
+# =============================================================================
+# 仮名化対応機能
+# =============================================================================
+
+def resolve_client(identifier: str) -> Optional[dict]:
+    """
+    様々な識別子からクライアント情報を解決
+
+    対応する識別子:
+    - clientId (c-xxxx) : 仮名化後の内部ID
+    - displayCode (A-001) : 表示用コード
+    - name (山田健太) : 氏名（後方互換性）
+
+    Args:
+        identifier: クライアント識別子
+
+    Returns:
+        {
+            "clientId": "c-xxxx",
+            "displayCode": "A-001",
+            "name": "山田健太",
+            "bloodType": "A",
+            "dob": "1990-01-15"
+        }
+        または None（見つからない場合）
+    """
+    # clientId で検索
+    if identifier.startswith("c-"):
+        result = run_query("""
+            MATCH (c:Client {clientId: $id})
+            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+            RETURN c.clientId as clientId,
+                   c.displayCode as displayCode,
+                   c.bloodType as bloodType,
+                   COALESCE(i.name, c.name) as name,
+                   COALESCE(i.dob, c.dob) as dob
+        """, {"id": identifier})
+        if result:
+            return result[0]
+
+    # displayCode で検索
+    if identifier.startswith("A-"):
+        result = run_query("""
+            MATCH (c:Client {displayCode: $code})
+            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+            RETURN c.clientId as clientId,
+                   c.displayCode as displayCode,
+                   c.bloodType as bloodType,
+                   COALESCE(i.name, c.name) as name,
+                   COALESCE(i.dob, c.dob) as dob
+        """, {"code": identifier})
+        if result:
+            return result[0]
+
+    # 氏名で検索（後方互換性）
+    result = run_query("""
+        MATCH (c:Client)
+        OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+        WHERE i.name = $name OR c.name = $name
+        RETURN c.clientId as clientId,
+               c.displayCode as displayCode,
+               c.bloodType as bloodType,
+               COALESCE(i.name, c.name) as name,
+               COALESCE(i.dob, c.dob) as dob
+        LIMIT 1
+    """, {"name": identifier})
+
+    return result[0] if result else None
+
+
+def get_clients_list_extended(include_pii: bool = True) -> list:
+    """
+    クライアント一覧を取得（仮名化対応版）
+
+    Args:
+        include_pii: True の場合は氏名を含む、False の場合は displayCode のみ
+
+    Returns:
+        [
+            {"clientId": "c-xxx", "displayCode": "A-001", "name": "山田健太"},
+            ...
+        ]
+    """
+    if include_pii:
+        return run_query("""
+            MATCH (c:Client)
+            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+            RETURN c.clientId as clientId,
+                   c.displayCode as displayCode,
+                   COALESCE(i.name, c.name) as name
+            ORDER BY COALESCE(c.displayCode, c.name)
+        """)
+    else:
+        return run_query("""
+            MATCH (c:Client)
+            RETURN c.clientId as clientId,
+                   c.displayCode as displayCode
+            ORDER BY c.displayCode
+        """)
+
+
+def get_client_by_identifier(identifier: str) -> Optional[str]:
+    """
+    識別子から内部で使用するクライアント識別子を取得
+
+    仮名化スキーマ移行中は、clientId があれば clientId を、
+    なければ name を返す（後方互換性）
+
+    Args:
+        identifier: 任意の識別子（clientId, displayCode, name）
+
+    Returns:
+        内部識別子（clientId または name）
+    """
+    client = resolve_client(identifier)
+    if client:
+        # clientId があればそれを使用、なければ name（後方互換）
+        return client.get('clientId') or client.get('name')
+    return None
+
+
+def match_client_clause(identifier: str) -> tuple[str, dict]:
+    """
+    クライアントをマッチするための Cypher 句を生成
+
+    仮名化スキーマ対応:
+    - clientId がある場合: MATCH (c:Client {clientId: $clientId})
+    - ない場合: MATCH (c:Client {name: $name})
+
+    Args:
+        identifier: クライアント識別子
+
+    Returns:
+        (cypher_clause, params)
+    """
+    client = resolve_client(identifier)
+
+    if not client:
+        # 見つからない場合は名前でマッチを試みる
+        return "MATCH (c:Client {name: $name})", {"name": identifier}
+
+    if client.get('clientId'):
+        return "MATCH (c:Client {clientId: $clientId})", {"clientId": client['clientId']}
+    else:
+        return "MATCH (c:Client {name: $name})", {"name": client.get('name', identifier)}
+
+
+def is_pseudonymization_enabled() -> bool:
+    """仮名化スキーマが有効かどうかを確認"""
+    # Identity ノードが存在するかで判定
+    result = run_query("MATCH (i:Identity) RETURN count(i) as count LIMIT 1")
+    return result[0]['count'] > 0 if result else False
+
+
+def get_display_name(identifier: str, fallback: str = "不明") -> str:
+    """
+    識別子から表示用の名前を取得
+
+    Args:
+        identifier: クライアント識別子
+        fallback: 見つからない場合のデフォルト値
+
+    Returns:
+        表示用名前（氏名または displayCode）
+    """
+    client = resolve_client(identifier)
+    if client:
+        return client.get('name') or client.get('displayCode') or fallback
+    return fallback

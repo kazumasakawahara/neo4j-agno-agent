@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>ナラティブ記録</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Hiragino Sans', sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        /* ヘッダー */
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 16px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .header .subtitle {
+            font-size: 0.8rem;
+            opacity: 0.9;
+            margin-top: 4px;
+        }
+
+        /* コンテナ */
+        .container {
+            padding: 16px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* カード */
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .card-title {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* フォーム要素 */
+        select, input {
+            width: 100%;
+            padding: 14px 16px;
+            font-size: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            background: white;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        select {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            background-size: 20px;
+            padding-right: 40px;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        /* テキストエリア */
+        .textarea-wrapper {
+            position: relative;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            padding: 14px 16px;
+            font-size: 1rem;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            resize: vertical;
+            font-family: inherit;
+            line-height: 1.6;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        textarea::placeholder {
+            color: #aaa;
+        }
+
+        /* 音声入力ボタン */
+        .voice-btn {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border: none;
+            background: #667eea;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .voice-btn:active {
+            transform: scale(0.95);
+        }
+
+        .voice-btn.recording {
+            background: #ef4444;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); }
+            50% { transform: scale(1.1); box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6); }
+        }
+
+        /* ボタン */
+        .btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+
+        .btn-outline {
+            background: white;
+            color: #666;
+            border: 2px solid #e0e0e0;
+        }
+
+        .btn:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+
+        /* 抽出結果 */
+        .result-section {
+            display: none;
+        }
+
+        .result-section.visible {
+            display: block;
+        }
+
+        .result-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+
+        .result-item-title {
+            font-size: 0.75rem;
+            color: #888;
+            margin-bottom: 4px;
+        }
+
+        .result-item-content {
+            font-size: 0.95rem;
+            color: #333;
+        }
+
+        .result-tag {
+            display: inline-block;
+            padding: 4px 10px;
+            background: #e0e7ff;
+            color: #4338ca;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            margin: 2px;
+        }
+
+        .result-tag.danger {
+            background: #fee2e2;
+            color: #dc2626;
+        }
+
+        .result-tag.success {
+            background: #d1fae5;
+            color: #059669;
+        }
+
+        /* ローディング */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .loading.visible {
+            display: block;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* メッセージ */
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .message.visible {
+            display: block;
+        }
+
+        .message.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .message.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        /* ステップインジケーター */
+        .steps {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .step {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ddd;
+        }
+
+        .step.active {
+            background: #667eea;
+        }
+
+        .step.done {
+            background: #10b981;
+        }
+
+        /* 非表示 */
+        .hidden {
+            display: none !important;
+        }
+
+        /* 録音状態表示 */
+        .recording-status {
+            display: none;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #fef2f2;
+            color: #dc2626;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        .recording-status.visible {
+            display: flex;
+        }
+
+        .recording-dot {
+            width: 8px;
+            height: 8px;
+            background: #dc2626;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* ヒント */
+        .hint {
+            font-size: 0.8rem;
+            color: #888;
+            margin-top: 8px;
+        }
+
+        /* 完了画面 */
+        .complete-screen {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .complete-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+        }
+
+        .complete-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .complete-message {
+            color: #666;
+            margin-bottom: 24px;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>📝 ナラティブ記録</h1>
+        <div class="subtitle">音声で話すだけ → AIが構造化 → グラフ登録</div>
+    </header>
+
+    <div class="container">
+        <!-- ステップインジケーター -->
+        <div class="steps">
+            <div class="step active" id="step1"></div>
+            <div class="step" id="step2"></div>
+            <div class="step" id="step3"></div>
+        </div>
+
+        <!-- メッセージ -->
+        <div class="message" id="message"></div>
+
+        <!-- Step 1: 入力画面 -->
+        <div id="inputSection">
+            <div class="card">
+                <div class="card-title">👤 対象者</div>
+                <select id="clientSelect">
+                    <option value="">選択してください</option>
+                    <option value="__new__">+ 新規クライアント</option>
+                </select>
+            </div>
+
+            <div class="card">
+                <div class="card-title">👨‍⚕️ あなたの名前</div>
+                <input type="text" id="supporterName" placeholder="例：田中" />
+            </div>
+
+            <div class="card">
+                <div class="card-title">📝 支援の様子を自由に記録</div>
+                <div class="textarea-wrapper">
+                    <textarea
+                        id="narrativeText"
+                        placeholder="例：今日、昼食後にサイレンの音でパニックになった。静かな部屋に移動して5分見守ったら落ち着いた。この対応は効果的だった。"
+                    ></textarea>
+                    <button class="voice-btn" id="voiceBtn" title="音声入力">🎤</button>
+                </div>
+                <div class="recording-status" id="recordingStatus">
+                    <span class="recording-dot"></span>
+                    <span>録音中... タップで停止</span>
+                </div>
+                <div class="hint">💡 ヒント: 「〜するとパニック」「〜すると落ち着く」など、ケアのポイントを含めると効果的です</div>
+            </div>
+
+            <button class="btn btn-primary" id="extractBtn" disabled>
+                🤖 AIで構造化
+            </button>
+        </div>
+
+        <!-- Loading -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>AIが内容を分析中...</p>
+            <p style="font-size: 0.85rem; color: #888; margin-top: 8px;">禁忌事項、ケア方法、支援記録を抽出しています</p>
+        </div>
+
+        <!-- Step 2: 確認画面 -->
+        <div class="result-section" id="resultSection">
+            <div class="card">
+                <div class="card-title">✅ 抽出結果を確認</div>
+
+                <div class="result-item" id="resultClient">
+                    <div class="result-item-title">対象者</div>
+                    <div class="result-item-content" id="resultClientName">-</div>
+                </div>
+
+                <div class="result-item" id="resultNgActions" style="display:none;">
+                    <div class="result-item-title">⚠️ 禁忌事項（してはいけないこと）</div>
+                    <div class="result-item-content" id="resultNgActionsContent"></div>
+                </div>
+
+                <div class="result-item" id="resultCarePrefs" style="display:none;">
+                    <div class="result-item-title">💚 ケア方法</div>
+                    <div class="result-item-content" id="resultCarePrefsContent"></div>
+                </div>
+
+                <div class="result-item" id="resultSupportLogs" style="display:none;">
+                    <div class="result-item-title">📋 支援記録</div>
+                    <div class="result-item-content" id="resultSupportLogsContent"></div>
+                </div>
+
+                <div class="result-item" id="resultOthers" style="display:none;">
+                    <div class="result-item-title">📎 その他の情報</div>
+                    <div class="result-item-content" id="resultOthersContent"></div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 12px;">
+                <button class="btn btn-outline" id="backBtn" style="flex: 1;">
+                    ← 戻る
+                </button>
+                <button class="btn btn-success" id="registerBtn" style="flex: 2;">
+                    ✅ この内容で登録
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 3: 完了画面 -->
+        <div class="result-section" id="completeSection">
+            <div class="complete-screen">
+                <div class="complete-icon">🎉</div>
+                <div class="complete-title">登録完了！</div>
+                <div class="complete-message" id="completeMessage">情報を登録しました</div>
+                <button class="btn btn-primary" id="newRecordBtn">
+                    📝 続けて記録する
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 状態管理 ---
+        const state = {
+            clients: [],
+            extractedData: null,
+            rawExtraction: null,
+            isRecording: false
+        };
+
+        // --- 要素取得 ---
+        const $ = (id) => document.getElementById(id);
+
+        const elements = {
+            clientSelect: $('clientSelect'),
+            supporterName: $('supporterName'),
+            narrativeText: $('narrativeText'),
+            voiceBtn: $('voiceBtn'),
+            extractBtn: $('extractBtn'),
+            recordingStatus: $('recordingStatus'),
+            loading: $('loading'),
+            inputSection: $('inputSection'),
+            resultSection: $('resultSection'),
+            completeSection: $('completeSection'),
+            message: $('message'),
+            backBtn: $('backBtn'),
+            registerBtn: $('registerBtn'),
+            newRecordBtn: $('newRecordBtn'),
+            steps: [$('step1'), $('step2'), $('step3')]
+        };
+
+        // --- API ---
+        const API_BASE = window.location.origin;
+
+        async function fetchClients() {
+            try {
+                const res = await fetch(`${API_BASE}/api/clients`);
+                const data = await res.json();
+                state.clients = data.clients || [];
+                renderClientOptions();
+            } catch (e) {
+                console.error('クライアント取得エラー:', e);
+                showMessage('クライアント一覧の取得に失敗しました', 'error');
+            }
+        }
+
+        async function extractNarrative() {
+            const text = elements.narrativeText.value.trim();
+            const supporter = elements.supporterName.value.trim();
+            const clientName = elements.clientSelect.value === '__new__'
+                ? null
+                : elements.clientSelect.value || null;
+
+            if (!text) {
+                showMessage('テキストを入力してください', 'error');
+                return;
+            }
+            if (!supporter) {
+                showMessage('あなたの名前を入力してください', 'error');
+                return;
+            }
+
+            showLoading(true);
+            hideMessage();
+
+            try {
+                const res = await fetch(`${API_BASE}/api/narrative/extract`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: text,
+                        client_name: clientName,
+                        supporter_name: supporter
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || '抽出に失敗しました');
+                }
+
+                if (data.success && data.extracted) {
+                    state.extractedData = data.extracted;
+                    state.rawExtraction = data.raw_extraction;
+                    showResults();
+                } else {
+                    showMessage(data.message || '情報を抽出できませんでした', 'error');
+                    showLoading(false);
+                }
+            } catch (e) {
+                console.error('抽出エラー:', e);
+                showMessage(e.message || '抽出処理でエラーが発生しました', 'error');
+                showLoading(false);
+            }
+        }
+
+        async function registerData() {
+            const supporter = elements.supporterName.value.trim();
+
+            elements.registerBtn.disabled = true;
+            elements.registerBtn.innerHTML = '登録中...';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/narrative/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        extracted_data: state.rawExtraction,
+                        supporter_name: supporter
+                    })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || '登録に失敗しました');
+                }
+
+                if (data.success) {
+                    showComplete(data.client_name, data.registered_count);
+                } else {
+                    throw new Error(data.message || '登録に失敗しました');
+                }
+            } catch (e) {
+                console.error('登録エラー:', e);
+                showMessage(e.message || '登録処理でエラーが発生しました', 'error');
+                elements.registerBtn.disabled = false;
+                elements.registerBtn.innerHTML = '✅ この内容で登録';
+            }
+        }
+
+        // --- 音声認識 ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            let finalTranscript = '';
+
+            recognition.onstart = () => {
+                state.isRecording = true;
+                elements.voiceBtn.classList.add('recording');
+                elements.voiceBtn.textContent = '⏹️';
+                elements.recordingStatus.classList.add('visible');
+                finalTranscript = elements.narrativeText.value;
+            };
+
+            recognition.onend = () => {
+                state.isRecording = false;
+                elements.voiceBtn.classList.remove('recording');
+                elements.voiceBtn.textContent = '🎤';
+                elements.recordingStatus.classList.remove('visible');
+                validateForm();
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript = transcript;
+                    }
+                }
+                elements.narrativeText.value = finalTranscript + interimTranscript;
+                validateForm();
+            };
+
+            recognition.onerror = (event) => {
+                console.error('音声認識エラー:', event.error);
+                state.isRecording = false;
+                elements.voiceBtn.classList.remove('recording');
+                elements.voiceBtn.textContent = '🎤';
+                elements.recordingStatus.classList.remove('visible');
+
+                if (event.error === 'not-allowed') {
+                    showMessage('マイクへのアクセスが拒否されました', 'error');
+                }
+            };
+        } else {
+            elements.voiceBtn.style.display = 'none';
+        }
+
+        function toggleRecording() {
+            if (!recognition) return;
+
+            if (state.isRecording) {
+                recognition.stop();
+            } else {
+                try {
+                    recognition.start();
+                } catch (e) {
+                    recognition.stop();
+                    setTimeout(() => recognition.start(), 100);
+                }
+            }
+        }
+
+        // --- UI ---
+        function renderClientOptions() {
+            const select = elements.clientSelect;
+            // 既存オプションをクリア（最初の2つは残す）
+            while (select.options.length > 2) {
+                select.remove(2);
+            }
+            // クライアント追加
+            state.clients.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                select.appendChild(option);
+            });
+        }
+
+        function validateForm() {
+            const hasText = elements.narrativeText.value.trim().length > 0;
+            const hasSupporter = elements.supporterName.value.trim().length > 0;
+            elements.extractBtn.disabled = !(hasText && hasSupporter);
+        }
+
+        function showLoading(show) {
+            elements.loading.classList.toggle('visible', show);
+            elements.inputSection.classList.toggle('hidden', show);
+        }
+
+        function showMessage(text, type = 'success') {
+            elements.message.textContent = text;
+            elements.message.className = `message visible ${type}`;
+        }
+
+        function hideMessage() {
+            elements.message.classList.remove('visible');
+        }
+
+        function updateSteps(current) {
+            elements.steps.forEach((step, i) => {
+                step.classList.remove('active', 'done');
+                if (i < current) step.classList.add('done');
+                if (i === current) step.classList.add('active');
+            });
+        }
+
+        function showResults() {
+            showLoading(false);
+            elements.inputSection.classList.add('hidden');
+            elements.resultSection.classList.add('visible');
+            updateSteps(1);
+
+            const data = state.extractedData;
+
+            // クライアント名
+            $('resultClientName').textContent = data.client_name || '（テキストから自動抽出）';
+
+            // 禁忌事項
+            if (data.ng_actions && data.ng_actions.length > 0) {
+                $('resultNgActions').style.display = 'block';
+                $('resultNgActionsContent').innerHTML = data.ng_actions.map(ng =>
+                    `<span class="result-tag danger">${ng.action}</span>`
+                ).join('');
+            } else {
+                $('resultNgActions').style.display = 'none';
+            }
+
+            // ケア方法
+            if (data.care_preferences && data.care_preferences.length > 0) {
+                $('resultCarePrefs').style.display = 'block';
+                $('resultCarePrefsContent').innerHTML = data.care_preferences.map(cp =>
+                    `<span class="result-tag success">${cp.instruction}</span>`
+                ).join('');
+            } else {
+                $('resultCarePrefs').style.display = 'none';
+            }
+
+            // 支援記録
+            if (data.support_logs && data.support_logs.length > 0) {
+                $('resultSupportLogs').style.display = 'block';
+                $('resultSupportLogsContent').innerHTML = data.support_logs.map(log =>
+                    `<div style="margin-bottom:8px;">
+                        <div style="font-size:0.85rem;color:#666;">${log.date} - ${log.situation}</div>
+                        <div>${log.action}</div>
+                        <span class="result-tag ${log.effectiveness === 'Effective' ? 'success' : ''}">${log.effectiveness === 'Effective' ? '効果的' : log.effectiveness === 'Ineffective' ? '逆効果' : '変化なし'}</span>
+                    </div>`
+                ).join('');
+            } else {
+                $('resultSupportLogs').style.display = 'none';
+            }
+
+            // その他
+            const others = [];
+            if (data.conditions && data.conditions.length > 0) {
+                others.push(`特性: ${data.conditions.join(', ')}`);
+            }
+            if (data.key_persons && data.key_persons.length > 0) {
+                others.push(`連絡先: ${data.key_persons.map(kp => kp.name).join(', ')}`);
+            }
+            if (data.certificates && data.certificates.length > 0) {
+                others.push(`手帳: ${data.certificates.map(c => c.type).join(', ')}`);
+            }
+
+            if (others.length > 0) {
+                $('resultOthers').style.display = 'block';
+                $('resultOthersContent').innerHTML = others.map(o =>
+                    `<div style="margin-bottom:4px;">${o}</div>`
+                ).join('');
+            } else {
+                $('resultOthers').style.display = 'none';
+            }
+        }
+
+        function showComplete(clientName, count) {
+            elements.resultSection.classList.remove('visible');
+            elements.completeSection.classList.add('visible');
+            updateSteps(2);
+
+            $('completeMessage').textContent =
+                `${clientName || 'クライアント'}さんの情報を${count}件登録しました`;
+        }
+
+        function resetForm() {
+            elements.completeSection.classList.remove('visible');
+            elements.resultSection.classList.remove('visible');
+            elements.inputSection.classList.remove('hidden');
+            elements.narrativeText.value = '';
+            elements.registerBtn.disabled = false;
+            elements.registerBtn.innerHTML = '✅ この内容で登録';
+            state.extractedData = null;
+            state.rawExtraction = null;
+            updateSteps(0);
+            validateForm();
+            hideMessage();
+            fetchClients(); // クライアント一覧を更新
+        }
+
+        function goBack() {
+            elements.resultSection.classList.remove('visible');
+            elements.inputSection.classList.remove('hidden');
+            updateSteps(0);
+        }
+
+        // --- イベント ---
+        elements.voiceBtn.addEventListener('click', toggleRecording);
+        elements.extractBtn.addEventListener('click', extractNarrative);
+        elements.backBtn.addEventListener('click', goBack);
+        elements.registerBtn.addEventListener('click', registerData);
+        elements.newRecordBtn.addEventListener('click', resetForm);
+        elements.narrativeText.addEventListener('input', validateForm);
+        elements.supporterName.addEventListener('input', validateForm);
+
+        // --- 初期化 ---
+        fetchClients();
+        validateForm();
+
+        // ローカルストレージから支援者名を復元
+        const savedSupporter = localStorage.getItem('supporter_name');
+        if (savedSupporter) {
+            elements.supporterName.value = savedSupporter;
+            validateForm();
+        }
+
+        // 支援者名を保存
+        elements.supporterName.addEventListener('blur', () => {
+            const name = elements.supporterName.value.trim();
+            if (name) {
+                localStorage.setItem('supporter_name', name);
+            }
+        });
+    </script>
+</body>
+</html>

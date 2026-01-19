@@ -29,10 +29,12 @@ A Neo4j-based graph database system for managing support information for individ
    - `app_narrative.py`: Streamlit data entry UI with narrative-style input and file upload
    - `app_quick_log.py`: Mobile-friendly quick logging UI (record only exceptional events)
    - `sos/app/`: Mobile SOS button app for emergency notifications
+   - `mobile/app/`: **NEW** Mobile narrative input app (voice → AI → graph)
 
 3. **Backend Services**:
    - `server.py`: MCP server for Claude Desktop integration (natural language queries)
    - `sos/api_server.py`: FastAPI server for SOS emergency notifications with LINE integration
+   - `mobile/api_server.py`: **NEW** FastAPI server for narrative input (Gemini extraction + Neo4j)
 
 4. **Shared Libraries** (`lib/`):
    - `db_operations.py`: Neo4j connection, query execution, data registration
@@ -202,7 +204,12 @@ neo4j-agno-agent/
 │   ├── db_operations.py    # All Neo4j operations (+ audit logging)
 │   ├── ai_extractor.py     # Gemini extraction logic
 │   ├── file_readers.py     # File format parsers
+│   ├── voice_input.py      # Web Speech API component for Streamlit
 │   └── utils.py            # Utilities and session state
+├── mobile/                 # NEW: Mobile narrative input system
+│   ├── api_server.py       # FastAPI server (voice → Gemini → Neo4j)
+│   └── app/                # Mobile web app (HTML/JS)
+│       └── index.html      # Voice input + extraction preview UI
 ├── sos/                    # Emergency notification system
 │   ├── api_server.py       # FastAPI server
 │   └── app/                # Mobile app static files
@@ -318,3 +325,47 @@ Claude: discover_care_patterns(client_name="山田健太")
 uv run python test_support_log.py
 # Tests 3 scenarios: daily support, emergency response, comprehensive info
 ```
+
+## NEW: Mobile Narrative Input System
+
+### Concept
+Support staff can record observations using voice input on smartphones. The narrative text is automatically structured by Gemini AI and registered as graph data in Neo4j.
+
+**Flow**: 🎤 Voice → 📝 Text → 🤖 Gemini → 📊 Graph
+
+### Usage
+
+**Start the Mobile Narrative API Server (port 8080)**
+```bash
+cd neo4j-agno-agent
+uv run python mobile/api_server.py
+```
+
+**Access the Mobile App**
+- Local: http://localhost:8080/app/
+- From smartphone (same WiFi): http://<PC's IP>:8080/app/
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/clients` | GET | Get registered client list |
+| `/api/narrative/extract` | POST | Extract structured data from narrative (preview) |
+| `/api/narrative/register` | POST | Register extracted data to Neo4j |
+| `/api/clients/{name}/logs` | GET | Get support logs for a client |
+
+### Example Request
+```bash
+curl -X POST http://localhost:8080/api/narrative/extract \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "今日、山田さんはサイレンの音でパニックになった。静かな部屋に移動して5分見守ったら落ち着いた。効果的だった。",
+    "supporter_name": "田中"
+  }'
+```
+
+### Mobile App Features
+- 🎤 Web Speech API voice input (Japanese)
+- 👤 Client selection or auto-detection from text
+- ✅ Extraction preview before registration
+- 💾 One-tap registration to Neo4j graph

@@ -12,8 +12,16 @@ import streamlit as st
 from datetime import date, datetime
 
 # --- ライブラリからインポート ---
-from lib.db_operations import run_query, get_clients_list, create_audit_log
+from lib.db_operations import (
+    run_query,
+    get_clients_list,
+    get_clients_list_extended,
+    resolve_client,
+    match_client_clause,
+    create_audit_log,
+)
 from lib.utils import init_session_state
+from lib.voice_input import render_voice_input
 
 # --- ページ設定 ---
 st.set_page_config(
@@ -99,12 +107,12 @@ def reset_state():
     st.session_state.log_type = None
 
 
-def save_quick_log(client_name: str, log_type: str, detail: str, supporter_name: str):
+def save_quick_log(client_identifier: str, log_type: str, detail: str, supporter_name: str):
     """
-    クイックログを保存
+    クイックログを保存（仮名化対応）
 
     Args:
-        client_name: クライアント名
+        client_identifier: クライアント識別子（clientId, displayCode, または name）
         log_type: 'good' または 'concern'
         detail: 詳細メモ
         supporter_name: 支援者名
@@ -113,30 +121,39 @@ def save_quick_log(client_name: str, log_type: str, detail: str, supporter_name:
     situation = "良好" if log_type == 'good' else "気になる点"
     effectiveness = "Effective" if log_type == 'good' else "Neutral"
 
+    # クライアント識別子を解決
+    resolved = resolve_client(client_identifier)
+    client_name = resolved.get('name') if resolved else client_identifier
+
     # Supporterノードを作成/取得
     run_query("""
         MERGE (s:Supporter {name: $supporter})
     """, {"supporter": supporter_name})
 
-    # SupportLogノードを作成
-    result = run_query("""
-        MATCH (c:Client {name: $client_name})
-        MATCH (s:Supporter {name: $supporter})
+    # クライアントマッチ句を生成（仮名化対応）
+    match_clause, match_params = match_client_clause(client_identifier)
 
-        CREATE (log:SupportLog {
+    # SupportLogノードを作成
+    query = f"""
+        {match_clause}
+        MATCH (s:Supporter {{name: $supporter}})
+
+        CREATE (log:SupportLog {{
             date: date($date),
             situation: $situation,
             action: $detail,
             effectiveness: $effectiveness,
             note: $note,
             logType: $log_type
-        })
+        }})
 
         CREATE (s)-[:LOGGED]->(log)-[:ABOUT]->(c)
 
         RETURN log.date as date
-    """, {
-        "client_name": client_name,
+    """
+
+    params = {
+        **match_params,
         "supporter": supporter_name,
         "date": date.today().isoformat(),
         "situation": situation,
@@ -144,7 +161,9 @@ def save_quick_log(client_name: str, log_type: str, detail: str, supporter_name:
         "effectiveness": effectiveness,
         "note": f"クイック記録: {log_type}",
         "log_type": log_type
-    })
+    }
+
+    result = run_query(query, params)
 
     # 監査ログ
     create_audit_log(
@@ -169,16 +188,29 @@ st.title("📝 かんたん記録")
 if st.session_state.quick_log_step == 'select_client':
     st.markdown("### 誰の記録？")
 
-    clients = get_clients_list()
+    # 仮名化対応版でクライアント一覧を取得
+    clients_extended = get_clients_list_extended(include_pii=True)
 
-    if not clients:
+    if not clients_extended:
         st.warning("クライアントが登録されていません")
         st.stop()
 
+    # 表示用リストを作成（displayCode があれば表示、なければ name のみ）
+    def format_client(c):
+        if c.get('displayCode'):
+            return f"{c['displayCode']}: {c.get('name', '不明')}"
+        return c.get('name', '不明')
+
+    # 選択用オプション（識別子として使う値 → 表示名）
+    client_options = {
+        c.get('clientId') or c.get('name'): format_client(c)
+        for c in clients_extended
+    }
+
     selected = st.selectbox(
         "クライアントを選択",
-        options=[""] + clients,
-        format_func=lambda x: "👤 選択してください" if x == "" else x,
+        options=[""] + list(client_options.keys()),
+        format_func=lambda x: "👤 選択してください" if x == "" else client_options.get(x, x),
         label_visibility="collapsed"
     )
 
@@ -190,8 +222,11 @@ if st.session_state.quick_log_step == 'select_client':
 # --- Step 2: 記録タイプ選択 ---
 elif st.session_state.quick_log_step == 'select_type':
     client = st.session_state.selected_client
+    # 識別子から表示名を取得
+    resolved = resolve_client(client)
+    display_name = resolved.get('name') if resolved else client
 
-    st.markdown(f"### {client} さん")
+    st.markdown(f"### {display_name} さん")
     st.markdown("#### 今日はどうでしたか？")
 
     st.markdown("")
@@ -227,14 +262,17 @@ elif st.session_state.quick_log_step == 'select_type':
 elif st.session_state.quick_log_step == 'input_detail':
     client = st.session_state.selected_client
     log_type = st.session_state.log_type
+    # 識別子から表示名を取得
+    resolved = resolve_client(client)
+    display_name = resolved.get('name') if resolved else client
 
     if log_type == 'good':
-        st.markdown(f"### 😊 {client} さん")
+        st.markdown(f"### 😊 {display_name} さん")
         st.markdown("#### 良かったこと")
         placeholder = "例：笑顔がたくさん見られた、食事を完食した、新しいことに挑戦できた"
         required = False
     else:
-        st.markdown(f"### 🤔 {client} さん")
+        st.markdown(f"### 🤔 {display_name} さん")
         st.markdown("#### 気になったこと")
         placeholder = "例：いつもより元気がなかった、食欲がなかった、パニックがあった"
         required = True
@@ -246,6 +284,11 @@ elif st.session_state.quick_log_step == 'input_detail':
         height=120,
         label_visibility="collapsed"
     )
+
+    # 音声入力コンポーネント
+    with st.expander("🎤 音声入力を使う", expanded=False):
+        st.caption("音声で入力し、コピーして上のテキストエリアに貼り付けてください")
+        render_voice_input(target_key="quick_log_voice", height=180)
 
     # 支援者名
     supporter = st.text_input(
@@ -291,6 +334,9 @@ elif st.session_state.quick_log_step == 'input_detail':
 elif st.session_state.quick_log_step == 'done':
     client = st.session_state.selected_client
     log_type = st.session_state.log_type
+    # 識別子から表示名を取得
+    resolved = resolve_client(client)
+    display_name = resolved.get('name') if resolved else client
 
     emoji = "😊" if log_type == 'good' else "📝"
     message = "良い記録" if log_type == 'good' else "気になる点"
@@ -299,7 +345,7 @@ elif st.session_state.quick_log_step == 'done':
     <div class="success-message">
         <h1>{emoji}</h1>
         <h2>記録しました！</h2>
-        <p>{client} さんの{message}を保存しました</p>
+        <p>{display_name} さんの{message}を保存しました</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -318,4 +364,4 @@ elif st.session_state.quick_log_step == 'done':
 
 # --- フッター ---
 st.markdown("---")
-st.caption("💡 ヒント: スマホのキーボードでマイクボタンを押すと音声入力できます")
+st.caption("💡 ヒント: 「🎤 音声入力を使う」を開くと、ブラウザの音声認識で入力できます")

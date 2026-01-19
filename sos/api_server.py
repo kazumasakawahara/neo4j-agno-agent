@@ -9,6 +9,7 @@ nest SOS - APIサーバー
 """
 
 import os
+import sys
 import httpx
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
@@ -18,6 +19,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
+
+# 親ディレクトリをパスに追加（lib/からインポートするため）
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from lib.db_operations import resolve_client, get_display_name
 
 # 環境変数読み込み
 load_dotenv()
@@ -133,9 +139,58 @@ async def send_line_message(message: str) -> bool:
 # --- クライアント情報取得 ---
 def get_client_info(client_id: str) -> dict | None:
     """
-    Neo4jからクライアント情報を取得
+    Neo4jからクライアント情報を取得（仮名化対応）
+
+    対応する識別子:
+    - clientId (c-xxxx)
+    - displayCode (A-001)
+    - name (山田健太)
     """
-    # 名前で検索（部分一致）
+    # まず仮名化対応の解決を試みる
+    resolved = resolve_client(client_id)
+
+    if resolved:
+        # 仮名化スキーマで見つかった場合
+        client_name = resolved.get('name')
+        client_id_internal = resolved.get('clientId')
+
+        # キーパーソンを取得（clientId または name で検索）
+        if client_id_internal:
+            kp_results = run_query("""
+                MATCH (c:Client {clientId: $clientId})
+                OPTIONAL MATCH (c)-[r:HAS_KEY_PERSON]->(kp:KeyPerson)
+                WITH kp, r
+                ORDER BY r.rank
+                RETURN collect({
+                    name: kp.name,
+                    relationship: kp.relationship,
+                    phone: kp.phone,
+                    rank: r.rank
+                }) as keyPersons
+            """, {"clientId": client_id_internal})
+        else:
+            kp_results = run_query("""
+                MATCH (c:Client {name: $name})
+                OPTIONAL MATCH (c)-[r:HAS_KEY_PERSON]->(kp:KeyPerson)
+                WITH kp, r
+                ORDER BY r.rank
+                RETURN collect({
+                    name: kp.name,
+                    relationship: kp.relationship,
+                    phone: kp.phone,
+                    rank: r.rank
+                }) as keyPersons
+            """, {"name": client_name})
+
+        return {
+            "name": client_name,
+            "clientId": client_id_internal,
+            "displayCode": resolved.get('displayCode'),
+            "dob": resolved.get('dob'),
+            "keyPersons": kp_results[0]['keyPersons'] if kp_results else []
+        }
+
+    # 後方互換性: 旧スキーマでの検索
     results = run_query("""
         MATCH (c:Client)
         WHERE c.name CONTAINS $name OR c.id = $name
@@ -152,27 +207,49 @@ def get_client_info(client_id: str) -> dict | None:
                }) as keyPersons
         LIMIT 1
     """, {"name": client_id})
-    
+
     if results:
         return results[0]
     return None
 
 
-def get_client_cautions(client_name: str) -> list:
+def get_client_cautions(client_identifier: str) -> list:
     """
-    クライアントの禁忌事項（注意点）を取得
+    クライアントの禁忌事項（注意点）を取得（仮名化対応）
+
+    Args:
+        client_identifier: clientId, displayCode, または name
     """
+    # まず仮名化対応の解決を試みる
+    resolved = resolve_client(client_identifier)
+
+    if resolved and resolved.get('clientId'):
+        # clientId で検索
+        results = run_query("""
+            MATCH (c:Client {clientId: $clientId})-[:MUST_AVOID]->(ng:NgAction)
+            WHERE ng.riskLevel IN ['LifeThreatening', 'Panic']
+            RETURN ng.action as action, ng.riskLevel as risk
+            ORDER BY CASE ng.riskLevel
+                WHEN 'LifeThreatening' THEN 1
+                WHEN 'Panic' THEN 2
+                ELSE 3 END
+            LIMIT 3
+        """, {"clientId": resolved['clientId']})
+        return results
+
+    # 後方互換性: name で検索
+    client_name = resolved.get('name') if resolved else client_identifier
     results = run_query("""
         MATCH (c:Client {name: $name})-[:MUST_AVOID]->(ng:NgAction)
         WHERE ng.riskLevel IN ['LifeThreatening', 'Panic']
         RETURN ng.action as action, ng.riskLevel as risk
-        ORDER BY CASE ng.riskLevel 
-            WHEN 'LifeThreatening' THEN 1 
-            WHEN 'Panic' THEN 2 
+        ORDER BY CASE ng.riskLevel
+            WHEN 'LifeThreatening' THEN 1
+            WHEN 'Panic' THEN 2
             ELSE 3 END
         LIMIT 3
     """, {"name": client_name})
-    
+
     return results
 
 
