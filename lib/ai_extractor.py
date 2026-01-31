@@ -244,3 +244,68 @@ def extract_from_text(text: str, client_name: str = None) -> dict | None:
     except Exception as e:
         log(f"抽出エラー: {type(e).__name__}: {e}", "ERROR")
         return None
+
+
+# =============================================================================
+# 安全性チェック（Rule 1）
+# =============================================================================
+
+SAFETY_CHECK_PROMPT = """
+あなたは「親亡き後支援データベース」の安全管理責任者です。
+入力された「ナラティブ（行動）」と、登録されている「禁忌事項（NgAction）」を照合し、
+**安全性違反（コンプライアンス違反）**がないかを判定してください。
+
+【入力情報】
+1. ナラティブ: {narrative}
+2. 禁忌事項リスト: {ng_actions}
+
+【判定ルール】
+- ナラティブの内容が、禁忌事項（してはいけないこと）に抵触していないか？
+- 抵触している場合は `is_violation: true` とし、警告メッセージを作成する。
+- 抵触していない場合は `is_violation: false` とする。
+- "Peanuts allergy" vs "Ate peanuts" -> Violation
+- "Loud noise panic" vs "Went to rock concert" -> Violation
+
+【出力形式】
+JSONのみ出力してください。
+
+```json
+{{
+  "is_violation": true/false,
+  "warning": "深刻な違反です。禁忌事項「〜」に抵触しています。（違反がない場合はnull）",
+  "risk_level": "High/Medium/Low/None"
+}}
+```
+"""
+
+def check_safety_compliance(narrative: str, ng_actions: list) -> dict:
+    """
+    ナラティブと禁忌事項を照合して安全性をチェック
+    
+    Args:
+        narrative: 入力されたナラティブテキスト
+        ng_actions: 禁忌事項のリスト [{'action': '...', 'riskLevel': '...'}]
+        
+    Returns:
+        {"is_violation": bool, "warning": str, "risk_level": str}
+    """
+    if not ng_actions:
+        return {"is_violation": False, "warning": None, "risk_level": "None"}
+        
+    agent = get_agent()
+    
+    # 禁忌事項をテキスト化
+    ng_text = "\n".join([f"- {item.get('action')} (Risk: {item.get('riskLevel')})" for item in ng_actions])
+    
+    try:
+        response = agent.run(
+            SAFETY_CHECK_PROMPT.format(narrative=narrative, ng_actions=ng_text)
+        )
+        log(f"DEBUG: Safety Response: {response.content}")
+        result = parse_json_from_response(response.content)
+        return result if result else {"is_violation": False, "warning": None, "risk_level": "None"}
+    except Exception as e:
+        import traceback
+        log(f"安全性チェックエラー: {e}\n{traceback.format_exc()}", "ERROR")
+        return {"is_violation": False, "warning": "チェック中にエラーが発生しました", "risk_level": "Unknown"}
+

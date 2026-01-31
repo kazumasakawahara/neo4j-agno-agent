@@ -13,7 +13,7 @@ from datetime import date
 
 # --- ライブラリからインポート ---
 from lib.db_operations import run_query, register_to_database, get_clients_list, get_client_stats, get_support_logs, discover_care_patterns
-from lib.ai_extractor import extract_from_text
+from lib.ai_extractor import extract_from_text, check_safety_compliance
 from lib.utils import safe_date_parse, init_session_state, reset_session_state, get_input_example
 from lib.file_readers import read_uploaded_file, get_supported_extensions, check_dependencies
 
@@ -173,6 +173,27 @@ def render_input_step():
             if extracted:
                 st.session_state.extracted_data = extracted
                 st.session_state.edited_data = json.loads(json.dumps(extracted))
+                
+                # --- Safety Check (Rule 1) ---
+                client_name = extracted.get('client', {}).get('name')
+                st.session_state.safety_warning = None # Reset
+                
+                if client_name:
+                    try:
+                        # Fetch NgActions
+                        ng_results = run_query("""
+                            MATCH (c:Client {name: $name})-[:MUST_AVOID]->(ng:NgAction)
+                            RETURN ng.action as action, ng.riskLevel as riskLevel
+                        """, {"name": client_name})
+                        
+                        # Check compliance
+                        check_result = check_safety_compliance(input_text, ng_results)
+                        if check_result.get("is_violation"):
+                            st.session_state.safety_warning = check_result.get('warning')
+                    except Exception as e:
+                        print(f"Safety check error: {e}")
+                # -----------------------------
+
                 st.session_state.step = 'edit'
                 st.rerun()
             else:
@@ -189,6 +210,12 @@ def render_edit_step():
     if not st.session_state.edited_data:
         st.error("データがありません")
         return
+    
+    # --- Safety Warning Display ---
+    if st.session_state.get('safety_warning'):
+        st.error(f"⚠️ **安全性警告**: {st.session_state.safety_warning}")
+        st.markdown("---")
+    # ------------------------------
     
     data = st.session_state.edited_data
     
