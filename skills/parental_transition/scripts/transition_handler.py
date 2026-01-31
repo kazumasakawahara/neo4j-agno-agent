@@ -80,6 +80,7 @@ def analyze_transition_impact(key_person_name: str) -> str:
                 role_info["advice"].append("成年後見人が登録されています。直ちに連絡を取り、業務を引き継いでください。")
             else:
                 # Case B: No Guardian -> Social Welfare Council + Recommendation
+                impact_report["immediate_action_required"] = True
                 role_info["alternatives"].append({
                     "service_name": "社会福祉協議会",
                     "type": "日常生活自立支援事業",

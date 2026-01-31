@@ -23,33 +23,39 @@
 
 - **物語形式での入力**: フォームではなく、ヒアリング内容をそのまま入力
 - **AI自動構造化**: Gemini 2.0がテキストからデータを抽出
-- **ファイルアップロード対応**: Word/Excel/PDF/テキストファイルから直接読み込み
+- **Safety First**: 入力時に禁忌事項（NgAction）を**リアルタイムにチェック**し、危険なケアを即座に警告
+- **Resilience Report**: 親入院などの危機的状況をAIが検知し、**「誰が困るか」「どうすべきか」**を即座にレポート（第5の柱：親の機能移行）
 - **自然言語検索**: Claude Desktopから「〇〇さんの禁忌事項は？」と質問可能
-- **Safety First**: 緊急時は禁忌事項を最優先で返答
+- **ファイルアップロード対応**: Word/Excel/PDF/テキストファイルから直接読み込み
 
 ## 🛠️ 技術スタック
 
 - **データベース**: Neo4j 5.15（グラフDB）
-- **AI**: Google Gemini 2.0 Flash（構造化）、Claude Desktop（検索）
-- **バックエンド**: Python 3.12+、MCP（Model Context Protocol）
-- **フロントエンド**: Streamlit
+- **AI**: Google Gemini 2.0 Flash（構造化・分析）、Claude Desktop（検索・エージェント）
+- **バックエンド**: Python 3.12+, FastAPI (Mobile API), MCP (Model Context Protocol)
+- **フロントエンド**: Streamlit, HTML/JS (Mobile App)
 - **パッケージ管理**: uv
 
 ## 📁 プロジェクト構成
 
 ```
 neo4j-agno-agent/
-├── app_narrative.py       # メインUI（Streamlit）
+├── app_narrative.py       # 管理者用メインUI（Streamlit）
 ├── server.py              # MCPサーバー（Claude Desktop用）
+├── skills/                # Antigravity Skills (モジュール化された機能)
+│   ├── parent_support_db/ # DB操作・支援記録スキル
+│   └── parental_transition/# 親なき後移行・レジリエンス分析スキル
 ├── lib/                   # 共通ライブラリ
 │   ├── __init__.py
 │   ├── db_operations.py   # Neo4j操作
-│   ├── ai_extractor.py    # AI構造化（ログ出力対応）
+│   ├── ai_extractor.py    # AI構造化・安全性チェック
 │   ├── utils.py           # ユーティリティ
 │   └── file_readers.py    # ファイル読み込み
+├── mobile/                # モバイル機能
+│   ├── api_server.py      # FastAPIバックエンド (Narrative/Safety/Resilience)
+│   └── app/               # モバイルWebアプリ (HTML/JS)
 ├── sos/                   # 緊急SOSシステム
-│   ├── api_server.py      # FastAPI緊急通知サーバー
-│   └── app/               # 本人用モバイルアプリ
+│   ├── api_server.py      # SOS通知サーバー (LINE連携)
 ├── docker-compose.yml     # Neo4jコンテナ設定
 ├── pyproject.toml         # 依存関係
 ├── SETUP_GUIDE.md         # 団体向けセットアップガイド
@@ -102,29 +108,27 @@ uv sync
 ### 5. アプリを起動
 
 ```bash
-# メインUI（詳細なデータ登録）
+# 管理者用データ登録（詳細な登録・編集）
 uv run streamlit run app_narrative.py
 
-# かんたん記録（支援者向けスマホUI）
-uv run streamlit run app_quick_log.py
+# モバイル用APIサーバー（アプリ・SOS機能・AI分析）
+uv run python mobile/api_server.py
 ```
 
-ブラウザで http://localhost:8501 にアクセス
+- 管理者画面: http://localhost:8501
+- モバイルアプリ: http://localhost:8080/app/
 
 ## 📖 使い方
 
-### かんたん記録（支援者向け・スマホ対応）
+### モバイルアプリ（支援者・本人向け）
 
-日々の支援で「特別なこと」があった時だけ記録：
+現場で「気づき」や「危機」を直感的に入力するWebアプリです。
 
-```
-1. クライアントを選択
-2. 「😊 とても良い日！」or「🤔 気になることあり」をタップ
-3. 詳細を入力（音声入力OK）
-4. 記録完了（30秒）
-```
-
-💡 **ポイント**: 「普通の日」は記録不要。両極端な事象だけを記録することでデータの質を保ちます。
+1. **ナラティブ入力**: 「今日、母が急に倒れて...」のように自然な言葉で入力（音声入力推奨）
+2. **リアルタイムAI分析**:
+   - **Safety Check**: 入力内容が登録された「禁忌事項（NgAction）」に触れる場合、即座に**Red Alert**を表示。
+   - **Resilience Report**: 「親の入院」などの危機的キーワードを検知すると、**「今誰が困るか」「代替手段は何か」**を即座にレポート表示。
+3. **かんたん登録**: 確認してボタンを押すだけでDBに記録。
 
 ### データ登録（Streamlit UI）
 
