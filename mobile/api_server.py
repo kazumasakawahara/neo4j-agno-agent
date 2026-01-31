@@ -26,7 +26,7 @@ from dotenv import load_dotenv
 # 親ディレクトリをパスに追加（lib/からインポートするため）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.ai_extractor import extract_from_text
+from lib.ai_extractor import extract_from_text, check_safety_compliance
 from lib.db_operations import (
     register_to_database,
     get_clients_list,
@@ -35,6 +35,7 @@ from lib.db_operations import (
     get_display_name,
     create_audit_log,
     get_support_logs,
+    run_query,
 )
 
 load_dotenv()
@@ -84,6 +85,8 @@ class NarrativeResponse(BaseModel):
     message: str
     extracted: Optional[ExtractedData] = None
     raw_extraction: Optional[dict] = None  # デバッグ用
+    safety_violation: bool = False
+    safety_warning: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):
@@ -235,11 +238,31 @@ async def extract_narrative(request: NarrativeRequest):
               f"禁忌={len(formatted.ng_actions)}, ケア={len(formatted.care_preferences)}, "
               f"記録={len(formatted.support_logs)}")
 
+        # --- Rule 1: Safety Check ---
+        client_name = formatted.client_name
+        check_result = {}
+        if client_name:
+            # データベースから既存の禁忌事項を取得
+            try:
+                ng_results = run_query("""
+                    MATCH (c:Client {name: $name})-[:MUST_AVOID]->(ng:NgAction)
+                    RETURN ng.action as action, ng.riskLevel as riskLevel
+                """, {"name": client_name})
+                
+                # Check compliance
+                check_result = check_safety_compliance(request.text, ng_results)
+                if check_result.get("is_violation"):
+                    print(f"⚠️ 安全性警告: {check_result.get('warning')}")
+            except Exception as e:
+                print(f"❌ Safety check failed: {e}")
+
         return NarrativeResponse(
             success=True,
             message="抽出完了。内容を確認して登録してください。",
             extracted=formatted,
-            raw_extraction=extracted  # 登録時に使用
+            raw_extraction=extracted,  # 登録時に使用
+            safety_violation=check_result.get("is_violation", False),
+            safety_warning=check_result.get("warning")
         )
 
     except Exception as e:
