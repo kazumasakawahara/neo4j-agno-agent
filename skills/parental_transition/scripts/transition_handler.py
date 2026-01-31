@@ -112,7 +112,7 @@ def analyze_transition_impact(key_person_name: str) -> str:
                 
             if len(role_info["alternatives"]) == 0:
                 impact_report["immediate_action_required"] = True
-                role_info["advice"].append("代替サービスが見つかりません。ケアマネージャーに至急相談してください。")
+                role_info["advice"].append("代替サービスが見つかりません。相談支援専門員（高齢者の場合はケアマネジャー）に至急相談してください。")
 
         impact_report["impacted_roles"].append(role_info)
             
