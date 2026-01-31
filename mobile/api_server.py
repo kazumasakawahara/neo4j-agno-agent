@@ -15,6 +15,7 @@ import os
 import sys
 from datetime import date
 from typing import Optional
+import json
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,6 +38,17 @@ from lib.db_operations import (
     get_support_logs,
     run_query,
 )
+# Import Parental Transition Skill Logic
+try:
+    from skills.parental_transition.scripts.transition_handler import analyze_transition_impact
+except ImportError:
+    # Handle case where path is not yet set correctly for script execution context
+    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills", "parental_transition", "scripts"))
+    try:
+        from transition_handler import analyze_transition_impact
+    except ImportError:
+        print("⚠️ Warning: Could not import analyze_transition_impact. Resilience features disabled.")
+        analyze_transition_impact = None
 
 load_dotenv()
 
@@ -87,6 +99,7 @@ class NarrativeResponse(BaseModel):
     raw_extraction: Optional[dict] = None  # デバッグ用
     safety_violation: bool = False
     safety_warning: Optional[str] = None
+    resilience_report: Optional[str] = None  # Resilience Report Preview
 
 
 class RegisterRequest(BaseModel):
@@ -256,13 +269,79 @@ async def extract_narrative(request: NarrativeRequest):
             except Exception as e:
                 print(f"❌ Safety check failed: {e}")
 
+        # --- Rule 5: Parental Crisis Resilience Report (Prototype) ---
+        resilience_report_text = None
+        crisis_keywords = ["入院", "倒れた", "急病", "事故", "亡く", "死亡", "死去", "他界"]
+        parent_keywords = ["母", "父", "親"]
+        
+        # Check if text contains BOTH a crisis keyword AND a parent keyword
+        has_crisis = any(k in request.text for k in crisis_keywords)
+        has_parent = any(k in request.text for k in parent_keywords)
+        
+        if has_crisis and has_parent and analyze_transition_impact and client_name:
+            print(f"🚨 Crisis detected for client: {client_name}. Checking Parental Transition Impact...")
+            try:
+                # 1. Provide Context: Find Key Person for this client who matches "Parent" role or just the primary KeyPerson
+                # Since we don't have exact NLP to extract "Hanako" from "My mother Hanako", 
+                # we assume the impact is on the PRIMARY KeyPerson who is a parent.
+                kp_result = run_query("""
+                    MATCH (c:Client {name: $name})-[:HAS_KEY_PERSON]->(kp:KeyPerson)
+                    WHERE kp.relationship IN ['母', '父', '両親', '義母', '義父'] or kp.relationship CONTAINS '親'
+                    RETURN kp.name as name, kp.relationship as relationship
+                    LIMIT 1
+                """, {"name": client_name})
+                
+                if kp_result:
+                    target_kp_name = kp_result[0]['name']
+                    print(f"🔍 Analyzing impact for KeyPerson: {target_kp_name} ({kp_result[0]['relationship']})")
+                    
+                    # 2. Run Analysis
+                    impact_data_raw = analyze_transition_impact(target_kp_name)
+                    if isinstance(impact_data_raw, str):
+                        impact_data = json.loads(impact_data_raw)
+                    else:
+                        impact_data = impact_data_raw
+                    
+                    # 3. Format Report if action required
+                    if impact_data and impact_data.get('immediate_action_required'):
+                        report_lines = ["📊 レジリエンス・レポート (プレビュー)", "-" * 20]
+                        
+                        # High Priority
+                        high_priority = [r for r in impact_data['impacted_roles'] if not r['alternatives']]
+                        if high_priority:
+                            report_lines.append("\n🚨 緊急対応が必要 (HIGH):")
+                            for r in high_priority:
+                                report_lines.append(f"・{r['role']} ({r['category']}): 代替手段なし")
+                                for advice in r.get('advice', []):
+                                     report_lines.append(f"  → {advice}")
+
+                        # Medium Priority
+                        medium_priority = [r for r in impact_data['impacted_roles'] if r['alternatives']]
+                        if medium_priority:
+                            report_lines.append("\n⚠️ 準備が必要 (MEDIUM):")
+                            for r in medium_priority:
+                                report_lines.append(f"・{r['role']} ({r['category']}): 代替候補あり")
+                                for alt in r['alternatives']:
+                                    report_lines.append(f"  → {alt['service_name']} ({alt['type']})")
+                                for advice in r.get('advice', []):
+                                     report_lines.append(f"  → {advice}")
+                        
+                        resilience_report_text = "\n".join(report_lines)
+                        print("✅ Resilience Report Generated.")
+                else:
+                    print("ℹ️ No Parent KeyPerson found for this client.")
+
+            except Exception as e:
+                print(f"❌ Resilience Analysis failed: {e}")
+
         return NarrativeResponse(
             success=True,
             message="抽出完了。内容を確認して登録してください。",
             extracted=formatted,
             raw_extraction=extracted,  # 登録時に使用
             safety_violation=check_result.get("is_violation", False),
-            safety_warning=check_result.get("warning")
+            safety_warning=check_result.get("warning"),
+            resilience_report=resilience_report_text
         )
 
     except Exception as e:
