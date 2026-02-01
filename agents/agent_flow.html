@@ -57,6 +57,11 @@
             background-color: #f0fff4;
             border-left: 5px solid #198754;
         }
+
+        .clinical-agent {
+            background-color: #fff8e1;
+            border-left: 5px solid #ffc107;
+        }
     </style>
 </head>
 
@@ -80,27 +85,29 @@
             Emergency -->|即時対応| Alert["LINE通知 / 救急情報表示"]
 
             Watchdog -- "安全 (No)" --> Input["📝 InputAgent"]
-
             Input -->|2. 抽出 & 構造化| Parsing["Gemini 2.0 Flash"]
-            Parsing -->|JSONデータ| Support["🧠 SupportAgent"]
+            Parsing -->|JSONデータ| CheckBehavior{行動障害?}
 
-            subgraph KnowledgeBase [Knowledge Base]
-            Neo4j[("Neo4j Graph DB")]
-            end
+            CheckBehavior -- "Yes (パニック/拒否等)" --> Clinical["🩺 ClinicalAdvisorAgent"]
+            CheckBehavior -- "No (通常)" --> Support["🧠 SupportAgent"]
 
-            Support <-->|3. 参照 & 推論| Neo4j
-                Support -->|4. 提案 + 根拠| Action["Care Plan / Log (with Reasoning Log)"]
-                end
+            Clinical <-->|3a. 外部検索| WebSearch["🌐 DuckDuckGo (ResearchToolkit)"]
+                Clinical <-->|3b. 内部照合| Neo4j
+                    Clinical -->|4a. 統合アドバイス| Action
 
-                Support -.->|情報不足: 逆質問| User
+                    Support <-->|3. 参照 & 推論| Neo4j[("Neo4j Graph DB")]
+                        Support -->|4. 提案 + 根拠| Action["提案 / ログ記録"]
+                        end
 
-                Alert --> User
-                Action --> User
+                        Action --> User
+                        Alert --> User
 
-                style Watchdog fill:#ffe6e6,stroke:#d63384,stroke-width:2px
-                style Input fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
-                style Support fill:#e6fffa,stroke:#00b894,stroke-width:2px
-                style Neo4j fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+                        style Watchdog fill:#ffe6e6,stroke:#d63384,stroke-width:2px
+                        style Input fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
+                        style Support fill:#e6fffa,stroke:#00b894,stroke-width:2px
+                        style Clinical fill:#fff8e1,stroke:#ffc107,stroke-width:2px
+                        style Neo4j fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+                        style WebSearch fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,stroke-dasharray: 5 5
         </div>
 
         <div class="description">
@@ -119,12 +126,16 @@
             <div class="agent-card support-agent">
                 <strong>🧠 SupportAgent (参謀・ケアマネージャー)</strong>
                 <p>整理された情報と、データベースにある過去の記憶（生育歴、成功体験、願い）を突き合わせます。「親ならどうするか？」という視点で、最適なケアプランを提案したり、記録を知識として蓄積します。</p>
-                <ul>
-                    <li><strong>推論ログ (Reasoning Log):</strong> 「なぜその提案をしたのか？」の根拠（好みや禁忌）を明示し、信頼性を高めます。</li>
-                    <li><strong>対話ループ (Dialogue Loop):</strong> 情報不足時は、ユーザーに逆質問（差し戻し）を行い、精度を高めます。</li>
-                </ul>
+            </div>
+
+            <div class="agent-card clinical-agent">
+                <strong>🩺 ClinicalAdvisorAgent (臨床アドバイザー)</strong>
+                <p>行動障害（パニック・拒否等）が検知された場合に登場します。DuckDuckGoで検索した外部の科学的知見（PBS）と、Neo4j内の本人の個別記録をクロスチェックし、根拠に基づいた介入案をアドバイスします。
+                </p>
             </div>
         </div>
+    </div>
+    </div>
     </div>
 
 </body>
