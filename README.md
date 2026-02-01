@@ -19,47 +19,54 @@
 | **第3の柱：法的基盤** | 手帳、受給者証、更新日 | 「療育手帳A1、来年6月更新」 |
 | **第4の柱：危機管理ネットワーク** | キーパーソン、後見人、医療機関 | 「母が倒れたら弟に連絡」 |
 
-## ✨ 特徴
+## ✨ 特徴（Autonomous Agent Team）
 
-- **物語形式での入力**: フォームではなく、ヒアリング内容をそのまま入力
-- **AI自動構造化**: Gemini 2.0がテキストからデータを抽出
-- **Safety First**: 入力時に禁忌事項（NgAction）を**リアルタイムにチェック**し、危険なケアを即座に警告
-- **Resilience Report**: 親入院などの危機的状況をAIが検知し、**「誰が困るか」「どうすべきか」**を即座にレポート（第5の柱：親の機能移行）
-- **自然言語検索**: Claude Desktopから「〇〇さんの禁忌事項は？」と質問可能
-- **ファイルアップロード対応**: Word/Excel/PDF/テキストファイルから直接読み込み
+**Agnoフレームワーク**を用いた自律型エージェントチームが、24時間365日、親御さんの代わりに判断と調整を行います。
+
+1.  **Input Agent（情報構造化）**:
+    - 日々のナラティブ（物語）を受け取り、Gemini 2.0を用いて構造化データへ変換。
+    - 入力時点で安全性を一次チェック。
+
+2.  **Emergency Watchdog（緊急監視）**:
+    - 「SOS」「救急車」などのキーワードを常時監視。
+    - **Fast-path機能**: 危険を検知すると、複雑な推論をスキップし、即座に禁忌事項と緊急連絡先を出力。
+
+3.  **Support Agent（代替支援計画）**:
+    - **第5の柱（Resilience）**を担う中核エージェント。
+    - 親が入院するなど、支援機能が不全になった際、Neo4j知識グラフを探索。
+    - 「誰がキーパーソンか」「今の状況で禁忌は何か」を判断し、**代替プラン（Plan B）**を自律的に策定。
+    - 人間（ユーザー）に承認を求め、実行に移す（Human-in-the-loop）。
 
 ## 🛠️ 技術スタック
 
-- **データベース**: Neo4j 5.15（グラフDB）
-- **AI**: Google Gemini 2.0 Flash（構造化・分析）、Claude Desktop（検索・エージェント）
-- **バックエンド**: Python 3.12+, FastAPI (Mobile API), MCP (Model Context Protocol)
-- **フロントエンド**: Streamlit, HTML/JS (Mobile App)
-- **パッケージ管理**: uv
+-   **Autonomous Agents**: Agno Framework
+-   **Database**: Neo4j 5.15 (Graph DB)
+-   **AI Models**: Google Gemini 2.0 Flash (Reasoning & Extraction)
+-   **Backend**: Python 3.12+, FastAPI
+-   **Frontend**: Streamlit, HTML/JS
+-   **Package Manager**: uv
 
 ## 📁 プロジェクト構成
 
 ```
 neo4j-agno-agent/
-├── app_narrative.py       # 管理者用メインUI（Streamlit）
-├── server.py              # MCPサーバー（Claude Desktop用）
-├── skills/                # Antigravity Skills (モジュール化された機能)
-│   ├── parent_support_db/ # DB操作・支援記録スキル
-│   └── parental_transition/# 親なき後移行・レジリエンス分析スキル
-├── lib/                   # 共通ライブラリ
-│   ├── __init__.py
-│   ├── db_operations.py   # Neo4j操作
-│   ├── ai_extractor.py    # AI構造化・安全性チェック
-│   ├── utils.py           # ユーティリティ
-│   └── file_readers.py    # ファイル読み込み
-├── mobile/                # モバイル機能
-│   ├── api_server.py      # FastAPIバックエンド (Narrative/Safety/Resilience)
-│   └── app/               # モバイルWebアプリ (HTML/JS)
-├── sos/                   # 緊急SOSシステム
-│   ├── api_server.py      # SOS通知サーバー (LINE連携)
-├── docker-compose.yml     # Neo4jコンテナ設定
-├── pyproject.toml         # 依存関係
-├── SETUP_GUIDE.md         # 団体向けセットアップガイド
-└── .env                   # 環境変数（非公開）
+├── agents/                # Agno Autonomous Agents
+│   ├── base.py            # Base Agent (Manifesto & Governance)
+│   ├── input_agent.py     # Narrative Processing
+│   ├── support_agent.py   # Planning & Resilience
+│   └── watchdog.py        # Emergency Override (Fast-path)
+├── tools/                 # Agent Toolkits
+│   ├── neo4j_toolkit.py   # Neo4j Operations
+│   └── extraction_toolkit.py # AI Extraction
+├── scripts/               # Scripts & Simulations
+│   ├── simulate_team.py   # Agent Team Simulation Script
+│   └── ...
+├── app_narrative.py       # Admin UI (Streamlit)
+├── server.py              # MCP Server (Legacy/Claude Integration)
+├── mobile/                # Mobile API & App
+├── sos/                   # SOS System
+├── docker-compose.yml     # Neo4j Config
+└── pyproject.toml         # Dependencies
 ```
 
 ## 🚀 セットアップ
@@ -117,6 +124,21 @@ uv run python mobile/api_server.py
 
 - 管理者画面: http://localhost:8501
 - モバイルアプリ: http://localhost:8080/app/
+
+### 6. エージェントチームのシミュレーション
+
+自律型エージェントチームの動作を確認するために、シミュレーションスクリプトが用意されています。
+
+```bash
+uv run python scripts/simulate_team.py
+```
+
+このスクリプトは以下のシナリオを実行します：
+1.  **SOS検知**: 「山田花子」さんからの緊急メッセージを受け取る。
+2.  **Fast-path発動**: Watchdogが緊急性を検知し、即座にアラートと検索を実行。
+3.  **構造化**: Input Agentがナラティブを解析。
+4.  **代替計画策定**: Support AgentがNeo4jを検索し、母親（山田花子）への連絡や支援者派遣を含む「Plan B」を策定。
+5.  **承認**: ユーザーに実行の許可を求める。
 
 ## 📖 使い方
 
