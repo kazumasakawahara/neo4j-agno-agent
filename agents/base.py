@@ -49,11 +49,10 @@ class BaseSupportAgent(Agent):
         # or we assume 'reasoning.log' will be handled by wrapper/runner script.
         
         super().__init__(
-            model=Gemini(id="gemini-2.0-flash-exp", api_key=os.getenv("GEMINI_API_KEY")),
+            model=Gemini(id="gemini-2.0-flash", api_key=os.getenv("GEMINI_API_KEY")),
             name=name,
             instructions=base_instructions,
             markdown=True,
-            show_tool_calls=True,
             **kwargs
         )
 
