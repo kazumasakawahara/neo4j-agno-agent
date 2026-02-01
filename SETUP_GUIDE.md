@@ -101,10 +101,10 @@ uv run python main.py
 
 ```text
 ============================================================
-🛡️  Post-Parent Support Team - Active 🛡️
+🛡️  Post-Parent Support Team - Autonomous Agents Active 🛡️
 ============================================================
 
-📝 Enter narrative/report (or 'exit' to quit):
+📝 Enter narrative/report (or 'exit'):
 >> 
 ```
 
