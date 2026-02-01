@@ -1,199 +1,124 @@
-# 親亡き後支援システム - 団体向けセットアップガイド
+# 🔰 はじめてのセットアップガイド
 
-このガイドでは、**nest SOS緊急通知システム**と**支援データベース**のセットアップ方法を説明します。
-
----
-
-## 📋 目次
-
-1. [必要なソフトウェアのインストール](#1-必要なソフトウェアのインストール)
-2. [システムのダウンロード](#2-システムのダウンロード)
-3. [データベースの起動](#3-データベースの起動)
-4. [LINE連携の設定](#4-line連携の設定)
-5. [システムの起動](#5-システムの起動)
-6. [本人用SOSアプリの設定](#6-本人用sosアプリの設定)
-7. [日常の運用](#7-日常の運用)
+このガイドは、プログラミング経験がない方でも「親亡き後支援システム」を自分のパソコンで動かせるように、一歩ずつ丁寧に説明した解説書です。
 
 ---
 
-## 1. 必要なソフトウェアのインストール
+## 💻 1. 準備するもの
 
-> 📌 **Windows ユーザーの方へ**
->
-> 以下のソフトウェアをインストールするには **管理者権限** が必要な場合があります。
-> 職場のPCで管理者権限がない場合は、IT部門に相談してください。
->
-> | ソフトウェア | 管理者権限 | 備考 |
-> |------------|:--------:|------|
-> | WSL 2 | **必須** | Docker の前提条件 |
-> | Docker Desktop | **必須** | データベース実行用 |
-> | Git | 推奨 | ユーザーフォルダにインストールすれば不要 |
-> | uv | 不要 | ユーザー領域にインストール |
+このシステムを動かすには、以下の3つの「道具（ソフトウェア）」が必要です。まずはこれらをインストールしましょう。
 
-### 1-1. Docker Desktop（データベース用）
+### ① Docker（ドッカー）の準備
+このシステムは「データベース」という情報の保管庫を使います。その保管庫を動かすためのエンジンが **Docker** です。
 
-**Windowsの場合:**
+#### Macをお使いの方 🍎
+1. [Dockerのダウンロードページ](https://www.docker.com/products/docker-desktop/)へアクセス
+2. **"Download for Mac"** をクリックしてダウンロード
+   - M1/M2/M3チップ搭載のMacなら「Apple Chip」
+   - それ以前のMacなら「Intel Chip」を選んでください
+3. ダウンロードしたファイルをダブルクリックして、画面の指示に従ってインストール
+4. インストールが終わったら、アプリケーション一覧から **Docker** をクリックして起動します
+   - 画面左下に「Engine running」と緑色で表示されれば準備OKです！✅
 
-> ⚠️ **管理者権限が必要です**
-> Docker Desktop のインストールには管理者権限が必要です。
-> 職場のPCの場合は、IT部門に相談してください。
+#### Windowsをお使いの方 🪟
+1. [Dockerのダウンロードページ](https://www.docker.com/products/docker-desktop/)へアクセス
+2. **"Download for Windows"** をクリックしてダウンロード
+3. ダウンロードしたファイルをダブルクリックしてインストール
+   - 管理者権限（パスワード）を求められる場合があります
+4. インストールが終わったらPCを再起動し、Dockerを起動してください
 
-**【前提条件】WSL 2（Windows Subsystem for Linux）について**
+---
 
-Docker Desktop は内部で **WSL 2** という技術を使用します。
-WSL 2 は Windows 上で Linux を動かす仕組みで、Docker が効率的に動作するために必要です。
+### ② 魔法のコマンドツール `uv` の準備
+このシステムは Python（パイソン）というプログラム言語で作られています。それを簡単に動かすための魔法の杖が **uv** です。
 
-**WSL 2 のインストール手順:**
-
-1. **PowerShell を管理者として実行**
-   - スタートメニューで「PowerShell」を検索
-   - 右クリック →「管理者として実行」
-
-2. **WSL をインストール**
-   ```powershell
-   wsl --install
+#### Macをお使いの方 🍎
+1. **「ターミナル」** というアプリを開きます（Spotlight検索で「ターミナル」と入力すると見つかります）
+2. 黒い画面が出てきます。そこに以下の呪文（コマンド）をコピーして貼り付け、エンターキーを押してください
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    ```
-   このコマンドで WSL 2 と Ubuntu が自動的にインストールされます。
 
-3. **PC を再起動**
-   インストール完了後、PC を再起動してください。
-
-4. **再起動後の初期設定**
-   - Ubuntu のターミナルが自動で開きます
-   - ユーザー名とパスワードを設定（Windows のパスワードとは別でOK）
-   - 設定したパスワードは忘れないようにメモしてください
-
-> 💡 **WSL のバージョン確認**
-> ```powershell
-> wsl --version
-> ```
-> バージョン 2.x 以上であればOKです。
-
-**Docker Desktop のインストール:**
-
-1. https://www.docker.com/products/docker-desktop/ にアクセス
-2. 「Download for Windows」をクリック
-3. ダウンロードした `Docker Desktop Installer.exe` を **右クリック →「管理者として実行」**
-4. インストール画面で以下を確認:
-   - ✅「Use WSL 2 instead of Hyper-V」にチェック（推奨）
-   - ✅「Add shortcut to desktop」にチェック（任意）
-5. 「OK」をクリックしてインストール
-6. インストール完了後、PC を再起動
-7. Docker Desktop を起動
-
-**初回起動時の確認事項:**
-- 利用規約に同意する画面が表示されたら「Accept」をクリック
-- 左下に「Engine running」（緑色）と表示されれば正常に動作しています
-- 「WSL 2 is not installed」と表示された場合は、上記の WSL インストール手順を実行してください
-
-> 🔧 **よくあるトラブル**
-> - 「Virtualization must be enabled」→ BIOS で仮想化を有効にする必要があります（IT部門に相談）
-> - 「WSL 2 installation is incomplete」→ WSL のインストール手順を再実行してください
-
-**Macの場合:**
-1. https://www.docker.com/products/docker-desktop/ にアクセス
-2. 「Download for Mac」をクリック（Intel/Apple Siliconを選択）
-3. ダウンロードした.dmgファイルを開く
-4. Docker.appをApplicationsフォルダにドラッグ
-5. Docker Desktopを起動
-
-### 1-2. uv（Python環境管理）
-
-**Windowsの場合（PowerShell）:**
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-**Macの場合（ターミナル）:**
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-インストール後、ターミナル/PowerShellを再起動してください。
-
-### 1-3. Git（リポジトリ取得用）
-
-**Windowsの場合:**
-
-> ⚠️ **管理者権限が必要な場合があります**
-> 「Program Files」にインストールする場合は管理者権限が必要です。
-
-1. https://git-scm.com/download/win にアクセス
-2. 「Click here to download」をクリック
-3. ダウンロードした `Git-x.xx.x-64-bit.exe` を実行
-   - 管理者権限を求められたら「はい」をクリック
-4. インストール画面の設定:
-   - **Select Destination Location**: そのまま「Next」
-   - **Select Components**: そのまま「Next」
-   - **Choosing the default editor**: お好みで選択（わからなければ「Nano」推奨）
-   - **Adjusting the name of the initial branch**: 「Let Git decide」のまま「Next」
-   - **Adjusting your PATH environment**: 「Git from the command line and also from 3rd-party software」（推奨）
-   - 以降はすべて「Next」→「Install」→「Finish」
-5. インストール後、**PowerShell を再起動**して以下を実行:
+#### Windowsをお使いの方 🪟
+1. **「PowerShell」** というアプリを開きます
+2. 青い画面が出てきます。そこに以下の呪文をコピーして貼り付け、エンターキーを押してください
    ```powershell
-   git --version
+   powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
    ```
-   バージョンが表示されればOKです。
-
-**Macの場合:**
-Gitは通常プリインストールされています。ターミナルで以下を実行して確認:
-```bash
-git --version
-```
 
 ---
 
-## 2. システムのダウンロード
+## 📥 2. システムを手に入れる
 
-ターミナル（Mac）またはPowerShell（Windows）で以下を実行:
+道具が揃ったら、システム本体をあなたのパソコンに持ってきましょう。
 
+1. **ターミナル（またはPowerShell）** を開きます
+2. 以下のコマンドを順番に入力してエンターキーを押します
+
+まずは「ドキュメント」フォルダに移動します：
 ```bash
-# 任意の場所に移動（例：ドキュメント）
 cd ~/Documents
+```
 
-# システムをダウンロード
+システムをインターネットからコピーします：
+```bash
 git clone https://github.com/kazumasakawahara/neo4j-agno-agent.git
+```
 
-# フォルダに移動
+システムのフォルダの中に入ります：
+```bash
 cd neo4j-agno-agent
+```
 
-# Pythonパッケージをインストール
+必要な部品を自動で組み立てます（少し時間がかかります）：
+```bash
 uv sync
 ```
 
 ---
 
-## 3. データベースの起動
+## 🚀 3. システムを起動する
 
-### 3-1. Docker Desktopを起動
+さあ、いよいよ起動です！
 
-Docker Desktopアプリを起動し、左下に「Engine running」と表示されるまで待ちます。
-
-### 3-2. Neo4jを起動
+### 手順1: データベースのスイッチオン
+まずは情報の保管庫（データベース）を起動します。
 
 ```bash
-cd ~/Documents/neo4j-agno-agent
 docker-compose up -d
 ```
+> ※ 初回は必要なデータをダウンロードするため、数分かかることがあります。
 
-### 3-3. 起動確認
+### 手順2: エージェントチームの呼び出し
+次に、あなたをサポートしてくれるAIエージェントチームを呼び出します。
 
-ブラウザで以下にアクセス:
+```bash
+uv run python main.py
 ```
-http://localhost:7474
+
+### 成功の合図 🎉
+画面に以下のような表示が出れば成功です！
+
+```text
+============================================================
+🛡️  Post-Parent Support Team - Active 🛡️
+============================================================
+
+📝 Enter narrative/report (or 'exit' to quit):
+>> 
 ```
 
-Neo4jのログイン画面が表示されればOKです。
+ここに、日々の記録や、緊急時のSOSを入力してみてください。
 
-**初回ログイン:**
-- Username: `neo4j`
-- Password: `password`（docker-compose.ymlで設定した値）
+**例:**
+- 「今日の山田さんはとても落ち着いていました」
+- 「緊急！田中さんが発作を起こしました！」
 
 ---
 
-## 4. LINE連携の設定
+## 📱 (応用) スマホでSOSボタンを使う
 
-### 4-1. LINE公式アカウントの作成
+このシステムには、本人や支援者がスマホからワンタップでSOSを発信できる機能もあります。
 
 1. https://developers.line.biz/ にアクセス
 2. 団体のLINEアカウントでログイン
@@ -335,25 +260,19 @@ http://192.168.1.100:8080/app/
 1. **Docker Desktopを起動**
 2. **SOSサーバーを起動**
    ```bash
-   cd ~/Documents/neo4j-agno-agent/sos
-   uv run python api_server.py
+   cd ~/Documents/neo4j-agno-agent
+   uv run python sos/api_server.py
    ```
 
-### 自動起動の設定（任意）
-
-PCを起動したときに自動でサーバーを起動するには、以下を参考にしてください:
-
-**Windowsの場合:**
-スタートアップフォルダにバッチファイルを配置
-
-**Macの場合:**
-システム環境設定 → ユーザとグループ → ログイン項目
+2. **アプリを開く**
+   ブラウザで `http://localhost:8000/app/` にアクセスすると、SOSボタンが表示されます。
 
 ---
 
-## ❓ トラブルシューティング
+## ❓ 困ったときは？
 
-### 「このサイトにアクセスできません」と表示される
+**Q. エラーが出て動かない！**
+A. Dockerが起動しているか確認してください。画面上のメニューバー（Mac）やタスクトレイ（Windows）にクジラのアイコン 🐳 があれば起動しています。
 
 - SOSサーバーが起動しているか確認
 - 同じWi-Fiネットワークに接続しているか確認
@@ -370,6 +289,9 @@ PCを起動したときに自動でサーバーを起動するには、以下を
 - Docker Desktopが起動しているか確認
 - `docker ps`でneo4jコンテナが動いているか確認
 - `.env`のNEO4J_PASSWORDが正しいか確認
+
+### 終了したいときは？
+A. ターミナルで `exit` と入力するか、`Ctrl` キーを押しながら `C` キーを押すと終了します。
 
 ### 【Windows】Docker Desktop が起動しない
 
@@ -421,6 +343,5 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ---
 
-## 📞 サポート
-
-技術的な問題がある場合は、開発者にお問い合わせください。
+このガイドが、あなたの「親亡き後支援」活動の一助となれば幸いです。
+作成者: Antigravity Team

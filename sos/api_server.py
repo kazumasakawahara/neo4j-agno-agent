@@ -294,6 +294,10 @@ SMART_SOS_PROMPT = """
 ※このメッセージはAIにより自動生成されています。
 """
 
+
+# Import the new skill
+from skills.sos_orchestrator.smart_sos import smart_sos_decision
+
 def create_smart_sos_message(
     client_name: str,
     key_persons: list,
@@ -306,60 +310,39 @@ def create_smart_sos_message(
     situation_context: str = "緊急SOS"
 ) -> str:
     """
-    AIを使用して状況に応じたSOSメッセージを作成
+    Use the SOS Orchestrator Skill to generate the message.
     """
     try:
-        agent = get_agent()
+        # Use the deterministic skill decision logic
+        # Note: The skill internally fetches data, but here we can pass context.
+        # Ideally, we should refactor the skill to accept data or just use the skill's fetch logic.
+        # For consistency with the verification, we'll let the skill fetch fresh data based on client_name.
         
-        now_str = datetime.now().strftime("%Y/%m/%d %H:%M")
+        decision = smart_sos_decision(client_name, situation_context)
         
-        # 位置情報
-        location_url = "不明"
+        # Override the message body with location info if available
+        base_message = decision.get('message', "SOS Generation Failed")
+        
+        location_info = ""
         if latitude and longitude:
-            location_url = f"https://www.google.com/maps?q={latitude},{longitude}"
-        
-        acc_text = f"精度: 約{int(accuracy)}m" if accuracy else "精度不明"
-        
-        # コンテキスト情報のテキスト化
-        context_lines = []
-        
-        if cautions:
-            context_lines.append("■ 禁忌事項 (NgAction):")
-            for c in cautions:
-                context_lines.append(f"- {c.get('action')} (Risk: {c.get('riskLevel')})")
-        
-        if care_preferences:
-            context_lines.append("\n■ 推奨ケア (CarePreference):")
-            for cp in care_preferences:
-                context_lines.append(f"- {cp.get('category')}: {cp.get('instruction')} (Priority: {cp.get('priority')})")
-                
-        if key_persons:
-            context_lines.append("\n■ キーパーソン:")
-            for kp in key_persons:
-                context_lines.append(f"- {kp.get('name')} ({kp.get('relationship')}): {kp.get('phone')}")
-                
-        if hospitals:
-            context_lines.append("\n■ かかりつけ医:")
-            for h in hospitals:
-                context_lines.append(f"- {h.get('name')} ({h.get('specialty')}): {h.get('phone')}")
+            map_url = f"https://www.google.com/maps?q={latitude},{longitude}"
+            acc_text = f"（精度: 約{int(accuracy)}m）" if accuracy else ""
+            location_info = f"\n📍 現在地:\n{map_url}\n{acc_text}\n"
+        else:
+            location_info = "\n📍 位置情報: 取得できませんでした\n"
 
-        context_info = "\n".join(context_lines)
+        # Combine
+        final_message = base_message + "\n" + location_info
         
-        # AI生成
-        response = agent.run(SMART_SOS_PROMPT.format(
-            client_name=client_name,
-            time=now_str,
-            location_url=location_url,
-            accuracy=acc_text,
-            situation_context=situation_context,
-            context_info=context_info
-        ))
+        # Add timestamp if not present in skill output (it isn't)
+        now_str = datetime.now().strftime("%Y/%m/%d %H:%M")
+        final_message = f"⏰ 発信時刻: {now_str}\n\n" + final_message
         
-        return response.content
+        return final_message
 
     except Exception as e:
         print(f"❌ Smart SOS generation failed: {e}")
-        # フォールバック: 既存のルールベース生成を使用
+        # Foldback to legacy
         return create_sos_message(client_name, key_persons, cautions, latitude, longitude, accuracy)
 
 

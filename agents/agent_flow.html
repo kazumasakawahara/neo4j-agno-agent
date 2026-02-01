@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post-Parent Support Agent Architecture</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+    </script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1E3A5F;
+        }
+
+        .description {
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .agent-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .watchdog {
+            background-color: #fff0f0;
+            border-left: 5px solid #dc3545;
+        }
+
+        .input-agent {
+            background-color: #f0f8ff;
+            border-left: 5px solid #0d6efd;
+        }
+
+        .support-agent {
+            background-color: #f0fff4;
+            border-left: 5px solid #198754;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Post-Parent Support Agent Team</h1>
+
+        <div class="description">
+            <p>このシステムでは、単一のAIではなく、専門役割を持った3つのエージェントがチームとして連携して動作します。</p>
+        </div>
+
+        <div class="mermaid">
+            flowchart TD
+            User(["👤 ユーザー (支援者)"]) -->|自然言語入力| Main["Orchestrator (main.py)"]
+
+            subgraph AgentTeam [Agent Team]
+            Main -->|1. Check| Watchdog["🐕 EmergencyWatchdog"]
+
+            Watchdog -- "🚨 SOS検知 (Yes)" --> Emergency["⚡ Fast Path Protocol"]
+            Emergency -->|即時対応| Alert["LINE通知 / 救急情報表示"]
+
+            Watchdog -- "安全 (No)" --> Input["📝 InputAgent"]
+
+            Input -->|2. 抽出 & 構造化| Parsing["Gemini 2.0 Flash"]
+            Parsing -->|JSONデータ| Support["🧠 SupportAgent"]
+
+            subgraph KnowledgeBase [Knowledge Base]
+            Neo4j[("Neo4j Graph DB")]
+            end
+
+            Support <-->|3. 参照 & 推論| Neo4j
+                Support -->|4. 提案 + 根拠| Action["Care Plan / Log (with Reasoning Log)"]
+                end
+
+                Support -.->|情報不足: 逆質問| User
+
+                Alert --> User
+                Action --> User
+
+                style Watchdog fill:#ffe6e6,stroke:#d63384,stroke-width:2px
+                style Input fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
+                style Support fill:#e6fffa,stroke:#00b894,stroke-width:2px
+                style Neo4j fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+        </div>
+
+        <div class="description">
+            <h3>エージェントの役割分担</h3>
+
+            <div class="agent-card watchdog">
+                <strong>🐕 EmergencyWatchdog (番犬)</strong>
+                <p>全ての入力の最初に「緊急性」をチェックします。SOSやパニック等のキーワードを検知すると、複雑な推論をスキップして即座に命を守る行動（Fast Path）をトリガーします。</p>
+            </div>
+
+            <div class="agent-card input-agent">
+                <strong>📝 InputAgent (書記・受付)</strong>
+                <p>曖昧な物語調のテキストを読み解き、データベースに登録できる形（JSON）に整理整頓します。同時に「禁忌事項（やってはいけないこと）」に触れていないかの安全チェックも行います。</p>
+            </div>
+
+            <div class="agent-card support-agent">
+                <strong>🧠 SupportAgent (参謀・ケアマネージャー)</strong>
+                <p>整理された情報と、データベースにある過去の記憶（生育歴、成功体験、願い）を突き合わせます。「親ならどうするか？」という視点で、最適なケアプランを提案したり、記録を知識として蓄積します。</p>
+                <ul>
+                    <li><strong>推論ログ (Reasoning Log):</strong> 「なぜその提案をしたのか？」の根拠（好みや禁忌）を明示し、信頼性を高めます。</li>
+                    <li><strong>対話ループ (Dialogue Loop):</strong> 情報不足時は、ユーザーに逆質問（差し戻し）を行い、精度を高めます。</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>
