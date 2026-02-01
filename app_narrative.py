@@ -16,6 +16,9 @@ from lib.db_operations import run_query, register_to_database, get_clients_list,
 from lib.ai_extractor import extract_from_text, check_safety_compliance
 from lib.utils import safe_date_parse, init_session_state, reset_session_state, get_input_example
 from lib.file_readers import read_uploaded_file, get_supported_extensions, check_dependencies
+from skills.report_generator.excel_exporter import export_client_data_to_excel
+from skills.report_generator.pdf_exporter import generate_emergency_sheet_pdf
+import os
 
 # --- 初期設定 ---
 st.set_page_config(
@@ -602,7 +605,7 @@ def render_done_step():
         st.divider()
         st.subheader(f"📋 {client_name}さんの登録データ")
         
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["禁忌事項", "推奨ケア", "支援記録", "キーパーソン", "手帳"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["禁忌事項", "推奨ケア", "支援記録", "キーパーソン", "手帳", "📊 データ出力"])
         
         with tab1:
             ng_data = run_query("""
@@ -730,6 +733,73 @@ def render_done_step():
                 st.dataframe(cert_data, use_container_width=True)
             else:
                 st.info("登録なし")
+
+        with tab6:
+            st.subheader("📥 データの出力")
+            st.markdown("登録された内容をファイル形式でダウンロードできます。")
+            
+            # Excel Export
+            st.markdown("##### 📊 Excel データ出力")
+            col1, col2 = st.columns([1, 2])
+            with col1:
+                if st.button("Excelファイルを生成", key="generate_excel", use_container_width=True):
+                    with st.spinner("生成中..."):
+                        try:
+                            path = export_client_data_to_excel(client_name)
+                            st.session_state['generated_excel_path'] = path
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"エラーが発生しました: {e}")
+            
+            with col2:
+                if st.session_state.get('generated_excel_path'):
+                    path = st.session_state['generated_excel_path']
+                    if os.path.exists(path):
+                        with open(path, "rb") as f:
+                            st.download_button(
+                                label="📥 Excelをダウンロード",
+                                data=f,
+                                file_name=os.path.basename(path),
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                        st.caption(f"生成済み: {os.path.basename(path)}")
+                    else:
+                        st.warning("ファイルが見つかりません。再生成してください。")
+
+            st.divider()
+
+            # PDF Export
+            st.markdown("##### 🚑 緊急時情報シート (PDF)")
+            st.caption("救急隊や医療機関に手渡すためのA4シートです。")
+            
+            col3, col4 = st.columns([1, 2])
+            with col3:
+                if st.button("PDFシートを生成", key="generate_pdf", use_container_width=True):
+                    with st.spinner("生成中..."):
+                        try:
+                            path = generate_emergency_sheet_pdf(client_name)
+                            st.session_state['generated_pdf_path'] = path
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"エラーが発生しました: {e}")
+            
+            with col4:
+                if st.session_state.get('generated_pdf_path'):
+                    path = st.session_state['generated_pdf_path']
+                    if os.path.exists(path):
+                        with open(path, "rb") as f:
+                            st.download_button(
+                                label="📥 PDFをダウンロード",
+                                data=f,
+                                file_name=os.path.basename(path),
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        st.caption(f"生成済み: {os.path.basename(path)}")
+                    else:
+                        st.warning("ファイルが見つかりません。再生成してください。")
+
 
 # =============================================================================
 # メイン: ステップに応じた画面表示

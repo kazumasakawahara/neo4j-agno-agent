@@ -1444,8 +1444,64 @@ def add_provider_feedback(
         return f"エラーが発生しました: {e}"
 
 
+
 # =============================================================================
-# ツール17: 事業所口コミ取得
+# ツール17: レポート生成（PDF/Excel）
+# =============================================================================
+
+@mcp.tool()
+def generate_report_file(
+    client_name: str,
+    file_type: str = "pdf"
+) -> str:
+    """
+    クライアントの情報をファイル（PDFまたはExcel）として出力します。
+    
+    - PDF: 緊急時情報シート（救急隊への手渡し用、A4 1枚）
+    - Excel: 詳細データシート（全データのバックアップ・共有用）
+    
+    Args:
+        client_name: クライアント名
+        file_type: 出力形式 ('pdf' または 'excel')。デフォルトは 'pdf'。
+    
+    Returns:
+        生成されたファイルのパスと完了メッセージ
+        
+    使用例:
+        - 「山田健太さんの緊急シートをPDFで作って」
+        - 「佐々木真理さんの全データをExcelで出力して」
+    """
+    try:
+        log(f"レポート生成: {client_name}, 形式: {file_type}")
+        
+        # 動的にインポート
+        import sys
+        from pathlib import Path
+        project_root = Path(__file__).parent
+        if str(project_root) not in sys.path:
+            sys.path.insert(0, str(project_root))
+            
+        from skills.report_generator.excel_exporter import export_client_data_to_excel
+        from skills.report_generator.pdf_exporter import generate_emergency_sheet_pdf
+        
+        file_type = file_type.lower()
+        
+        if file_type == 'pdf':
+            path = generate_emergency_sheet_pdf(client_name)
+            return f"✅ PDFシートを生成しました: {path}"
+        elif file_type == 'excel':
+            path = export_client_data_to_excel(client_name)
+            return f"✅ Excelファイルを生成しました: {path}"
+        else:
+            return "❌ 未対応の形式です。'pdf' または 'excel' を指定してください。"
+            
+    except Exception as e:
+        log(f"レポート生成エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+# =============================================================================
+# ツール18: 事業所口コミ取得
 # =============================================================================
 
 @mcp.tool()
