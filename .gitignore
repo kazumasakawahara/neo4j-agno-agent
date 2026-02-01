@@ -32,3 +32,4 @@ Thumbs.db
 
 # uv lock file (任意：含めても良い)
 # uv.lock
+*.log
