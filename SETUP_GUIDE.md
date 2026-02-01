@@ -120,8 +120,145 @@ uv run python main.py
 
 このシステムには、本人や支援者がスマホからワンタップでSOSを発信できる機能もあります。
 
-1. **SOSサーバーを起動する**
-   別のターミナルを開いて、以下のコマンドを入力します：
+1. https://developers.line.biz/ にアクセス
+2. 団体のLINEアカウントでログイン
+3. 「プロバイダー作成」→ 団体名を入力
+4. 「チャネル作成」→「Messaging API」を選択
+5. 必要事項を入力して作成
+
+### 4-2. Channel Access Tokenの取得
+
+1. 作成したチャネルの「Messaging API設定」
+2. 「チャネルアクセストークン（長期）」→「発行」
+3. 表示されたトークンをコピー
+
+### 4-3. グループLINEに公式アカウントを招待
+
+1. 通知を受けたいグループLINEを開く
+2. 設定 → メンバー → 招待
+3. 作成した公式アカウントを招待
+
+### 4-4. 設定ファイルの作成
+
+```bash
+cd ~/Documents/neo4j-agno-agent/sos
+cp .env.example .env
+```
+
+`.env`ファイルをテキストエディタで開き、以下を設定:
+
+```env
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=password
+
+LINE_CHANNEL_ACCESS_TOKEN=ここに取得したトークンを貼り付け
+LINE_GROUP_ID=ここにグループIDを貼り付け
+
+# セキュリティ設定（本番環境では必ず設定）
+# SOSアプリからのアクセスを許可するオリジン（カンマ区切りで複数指定可）
+# 例: https://example.com,https://app.example.com
+CORS_ORIGINS=
+```
+
+> ⚠️ **セキュリティ注意**: `CORS_ORIGINS`を設定しない場合、すべてのオリジンからのアクセスが許可されます。
+> 本番環境では、SOSアプリをホスティングするドメインを指定してください。
+
+**グループIDの取得方法:**
+グループIDは、公式アカウントがグループに参加した際のWebhookイベントから取得できます。
+詳細は `sos/README.md` を参照してください。
+
+---
+
+## 5. システムの起動
+
+### 5-1. データベースが起動していることを確認
+
+```bash
+docker ps
+```
+
+`neo4j`が表示されていればOK。
+
+### 5-2. モバイルAPIサーバーを起動
+
+```bash
+cd ~/Documents/neo4j-agno-agent
+uv run python mobile/api_server.py
+```
+
+以下が表示されれば成功:
+```
+==================================================
+🚀 Mobile & SOS API Server
+==================================================
+Neo4j: bolt://localhost:7687
+...
+App URL: http://localhost:8080/app/
+==================================================
+```
+
+### 5-3. データ登録UIを起動（別のターミナルで）
+
+```bash
+cd ~/Documents/neo4j-agno-agent
+uv run streamlit run app_narrative.py
+```
+
+ブラウザで http://localhost:8501 が開きます。
+
+---
+
+## 6. 本人用SOSアプリの設定
+
+### 6-1. サーバーのIPアドレスを確認
+
+**Windowsの場合:**
+```cmd
+ipconfig
+```
+
+**Macの場合:**
+```bash
+ifconfig | grep "inet "
+```
+
+例: `192.168.1.100`
+
+### 6-2. 本人用URLを作成
+
+```
+http://192.168.1.100:8080/app/
+```
+
+※IDはアプリ内で選択するため、URLパラメータは不要になりました。
+
+### 6-3. QRコードを作成
+
+以下のサイトでURLをQRコードに変換:
+- https://qr.quel.jp/
+- https://www.cman.jp/QRcode/
+
+### 6-4. スマホにインストール
+
+1. 本人のスマホでQRコードを読み取る
+2. ブラウザでURLを開く
+3. 「ホーム画面に追加」でアプリ化
+
+**iPhoneの場合:**
+共有ボタン → 「ホーム画面に追加」
+
+**Androidの場合:**
+メニュー → 「ホーム画面に追加」
+
+---
+
+## 7. 日常の運用
+
+### 毎日の起動手順
+
+1. **Docker Desktopを起動**
+2. **SOSサーバーを起動**
    ```bash
    cd ~/Documents/neo4j-agno-agent
    uv run python sos/api_server.py
@@ -137,8 +274,72 @@ uv run python main.py
 **Q. エラーが出て動かない！**
 A. Dockerが起動しているか確認してください。画面上のメニューバー（Mac）やタスクトレイ（Windows）にクジラのアイコン 🐳 があれば起動しています。
 
-**Q. 終了したいときは？**
+- SOSサーバーが起動しているか確認
+- 同じWi-Fiネットワークに接続しているか確認
+- ファイアウォールでポート8080が許可されているか確認
+
+### LINE通知が届かない
+
+- LINE_CHANNEL_ACCESS_TOKENが正しいか確認
+- LINE_GROUP_IDが正しいか確認
+- 公式アカウントがグループに参加しているか確認
+
+### Neo4jに接続できない
+
+- Docker Desktopが起動しているか確認
+- `docker ps`でneo4jコンテナが動いているか確認
+- `.env`のNEO4J_PASSWORDが正しいか確認
+
+### 終了したいときは？
 A. ターミナルで `exit` と入力するか、`Ctrl` キーを押しながら `C` キーを押すと終了します。
+
+### 【Windows】Docker Desktop が起動しない
+
+**「WSL 2 installation is incomplete」エラー:**
+1. PowerShell を管理者として実行
+2. 以下を実行:
+   ```powershell
+   wsl --update
+   wsl --set-default-version 2
+   ```
+3. PC を再起動
+
+**「Virtualization must be enabled」エラー:**
+- BIOS/UEFI で仮想化（Intel VT-x または AMD-V）を有効にする必要があります
+- PC によって設定方法が異なるため、IT部門またはPCメーカーのサポートに相談してください
+- 一般的な手順:
+  1. PC を再起動し、起動時に F2/F10/Delete キーを押して BIOS に入る
+  2. 「Virtualization」「Intel VT-x」「SVM Mode」などの項目を「Enabled」に変更
+  3. 保存して終了
+
+**「Docker Desktop requires a newer WSL kernel version」エラー:**
+```powershell
+wsl --update
+```
+
+### 【Windows】ファイアウォールでブロックされる
+
+初回起動時に「Windows セキュリティの重要な警告」が表示された場合:
+1. 「プライベート ネットワーク」にチェック ✅
+2. 「パブリック ネットワーク」はチェックを外す（セキュリティのため）
+3. 「アクセスを許可する」をクリック
+
+手動でファイアウォールを設定する場合:
+1. 「Windows セキュリティ」を開く
+2. 「ファイアウォールとネットワーク保護」→「詳細設定」
+3. 「受信の規則」→「新しい規則」
+4. 「ポート」を選択 → TCP ポート 8000, 7474, 7687 を許可
+
+### 【Windows】PowerShell でコマンドが実行できない
+
+**「このシステムではスクリプトの実行が無効になっている」エラー:**
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**「〇〇 は認識されていません」エラー:**
+- PowerShell を再起動してください
+- それでも解決しない場合、環境変数 PATH が正しく設定されているか確認
 
 ---
 

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -54,7 +55,7 @@
             border-radius: 12px;
             padding: 16px;
             margin-bottom: 16px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         .card-title {
@@ -67,7 +68,8 @@
         }
 
         /* フォーム要素 */
-        select, input {
+        select,
+        input {
             width: 100%;
             padding: 14px 16px;
             font-size: 1rem;
@@ -86,7 +88,8 @@
             padding-right: 40px;
         }
 
-        select:focus, input:focus {
+        select:focus,
+        input:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -147,8 +150,17 @@
         }
 
         @keyframes pulse {
-            0%, 100% { transform: scale(1); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); }
-            50% { transform: scale(1.1); box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6); }
+
+            0%,
+            100% {
+                transform: scale(1);
+                box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+            }
+
+            50% {
+                transform: scale(1.1);
+                box-shadow: 0 6px 20px rgba(239, 68, 68, 0.6);
+            }
         }
 
         /* ボタン */
@@ -261,7 +273,9 @@
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
 
         /* メッセージ */
@@ -340,8 +354,15 @@
         }
 
         @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.3; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
         }
 
         /* ヒント */
@@ -375,6 +396,7 @@
         }
     </style>
 </head>
+
 <body>
     <header class="header">
         <h1>📝 ナラティブ記録</h1>
@@ -410,10 +432,8 @@
             <div class="card">
                 <div class="card-title">📝 支援の様子を自由に記録</div>
                 <div class="textarea-wrapper">
-                    <textarea
-                        id="narrativeText"
-                        placeholder="例：今日、昼食後にサイレンの音でパニックになった。静かな部屋に移動して5分見守ったら落ち着いた。この対応は効果的だった。"
-                    ></textarea>
+                    <textarea id="narrativeText"
+                        placeholder="例：今日、昼食後にサイレンの音でパニックになった。静かな部屋に移動して5分見守ったら落ち着いた。この対応は効果的だった。"></textarea>
                     <button class="voice-btn" id="voiceBtn" title="音声入力">🎤</button>
                 </div>
                 <div class="recording-status" id="recordingStatus">
@@ -463,6 +483,22 @@
                 <div class="result-item" id="resultOthers" style="display:none;">
                     <div class="result-item-title">📎 その他の情報</div>
                     <div class="result-item-content" id="resultOthersContent"></div>
+                </div>
+
+                <!-- Resilience Report Section -->
+                <div class="result-item" id="resultResilience"
+                    style="display:none; border-left: 4px solid #ef4444; background: #fef2f2;">
+                    <div class="result-item-title" style="color: #dc2626; font-weight: bold;">🚨 レジリエンス・レポート (緊急対応)
+                    </div>
+                    <div class="result-item-content" id="resultResilienceContent"
+                        style="white-space: pre-wrap; color: #b91c1c;"></div>
+                </div>
+
+                <!-- Safety Warning Section -->
+                <div class="result-item" id="resultSafety"
+                    style="display:none; border-left: 4px solid #f59e0b; background: #fffbeb;">
+                    <div class="result-item-title" style="color: #d97706; font-weight: bold;">⚠️ 安全性チェック警告</div>
+                    <div class="result-item-content" id="resultSafetyContent" style="color: #b45309;"></div>
                 </div>
             </div>
 
@@ -573,6 +609,8 @@
                 if (data.success && data.extracted) {
                     state.extractedData = data.extracted;
                     state.rawExtraction = data.raw_extraction;
+                    state.resilienceReport = data.resilience_report;
+                    state.safetyWarning = data.safety_warning;
                     showResults();
                 } else {
                     showMessage(data.message || '情報を抽出できませんでした', 'error');
@@ -801,6 +839,23 @@
             } else {
                 $('resultOthers').style.display = 'none';
             }
+
+
+            // Resilience Report
+            if (state.resilienceReport) {
+                $('resultResilience').style.display = 'block';
+                $('resultResilienceContent').textContent = state.resilienceReport;
+            } else {
+                $('resultResilience').style.display = 'none';
+            }
+
+            // Safety Warning
+            if (state.safetyWarning) {
+                $('resultSafety').style.display = 'block';
+                $('resultSafetyContent').textContent = state.safetyWarning;
+            } else {
+                $('resultSafety').style.display = 'none';
+            }
         }
 
         function showComplete(clientName, count) {
@@ -862,4 +917,5 @@
         });
     </script>
 </body>
+
 </html>
