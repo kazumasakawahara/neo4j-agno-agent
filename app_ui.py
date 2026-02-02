@@ -25,6 +25,10 @@ st.markdown("""
 <style>
     .stApp {
         background-color: #f8f9fa;
+        color: #212529;
+    }
+    p, li, h1, h2, h3, h4, h5, h6 {
+        color: #212529 !important;
     }
     .chat-message {
         padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 1rem; display: flex;
@@ -107,8 +111,13 @@ if prompt := st.chat_input("日々の記録や、緊急の相談を入力して�
     with st.chat_message("user"):
         st.markdown(prompt)
 
+    # Response Container
+    response_placeholder = st.empty()
+    
     # Agent Processing Flow
     with st.status("🔄 Team is working...", expanded=True) as status:
+        response_content = None
+        agent_type = None
         
         # 1. Watchdog
         status.update(label="🐕 Watchdog checking for emergencies...", state="running")
@@ -118,22 +127,34 @@ if prompt := st.chat_input("日々の記録や、緊急の相談を入力して�
             status.update(label="🚨 SOS DETECTED!", state="error")
             sos_res = agents["watchdog"].run(f"Emergency detected: {prompt}", stream=False)
             response_content = sos_res.content
-            role = "assistant"
+            agent_type = "watchdog"
             
             # Highlight SOS
             st.error("🚨 EMERGENCY PROTOCOL ACTIVATED")
             st.markdown(f"**SOS Plan:**\n{response_content}")
-            
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": f"🚨 **SOS ACTIVATED**\n\n{response_content}",
-                "data": {"agent": "EmergencyWatchdog", "status": "Critical"}
-            })
 
         else:
-            # 2. Input Agent
+        else:
+            # Prepare History Context (Last 3 turns to maintain context)
+            history_context = ""
+            recent_msgs = st.session_state.messages[-3:] if len(st.session_state.messages) > 3 else st.session_state.messages
+            for msg in recent_msgs:
+                role_label = "User" if msg["role"] == "user" else "Agent"
+                history_context += f"{role_label}: {msg['content']}\n"
+
+            # 2. Input Agent (With History for Co-reference Resolution)
             status.update(label="📝 Structuring data...", state="running")
-            extraction_res = agents["input"].run(f"Process this text: {prompt}", stream=False)
+            input_prompt = f"""
+            Conversation History:
+            {history_context}
+            
+            Current User Input: {prompt}
+            
+            Task:
+            1. Extract client name and context from the CURRENT INPUT, utilizing the HISTORY if the current input is vague (e.g., "Yes, do that").
+            2. If the user is approving a plan, extract 'Intent: Approval'.
+            """
+            extraction_res = agents["input"].run(input_prompt, stream=False)
             formatted_data = extraction_res.content
             
             # 3. Behavioral Check
@@ -141,8 +162,12 @@ if prompt := st.chat_input("日々の記録や、緊急の相談を入力して�
             
             if is_behavioral:
                 status.update(label="🩺 Clinical Advisor researching...", state="running")
+                agent_type = "clinical"
                 
                 advisor_prompt = f"""
+                Conversation History:
+                {history_context}
+                
                 Situation: {prompt}
                 Task:
                 1. Identify behavioral issue.
@@ -153,36 +178,54 @@ if prompt := st.chat_input("日々の記録や、緊急の相談を入力して�
                 advisor_res = agents["clinical"].run(advisor_prompt, stream=False)
                 response_content = advisor_res.content
                 
-                st.warning("🩺 Clinical Advice")
-                st.markdown(response_content)
-                
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"🩺 **Clinical Advice**\n\n{response_content}",
-                    "data": {"agent": "ClinicalAdvisor", "context": formatted_data}
-                })
-                
             else:
                 status.update(label="🧠 Support Agent analyzing...", state="running")
+                agent_type = "support"
                 
                 support_prompt = f"""
+                Conversation History:
+                {history_context}
+                
                 User Input: {prompt}
                 Extracted Context: {formatted_data}
+                
                 Task:
                 1. Situation report -> Analyze risks & propose actions.
                 2. Info request -> Execute tools.
-                3. Use Resilience/Care/Report skills.
+                3. Plan Approval -> If user says "Yes/Proceed", EXECUTE the proposed plan (e.g., create logs, send notifications) or Confirm execution.
+                4. Use Resilience/Care/Report skills.
+                
+                Constraint: PRESENT OPTIONS AND STOP. Do not ask for general feedback like "Is this okay?". Only ask clarifying questions if you cannot proceed.
                 """
                 support_res = agents["support"].run(support_prompt, stream=False)
                 response_content = support_res.content
-                
-                st.success("🧠 Support Plan")
-                st.markdown(response_content)
-                
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": f"🧠 **Support Plan**\n\n{response_content}",
-                    "data": {"agent": "SupportAgent", "context": formatted_data}
-                })
         
         status.update(label="✅ Complete", state="complete", expanded=False)
+
+    # Display Response Outside Status Block
+    if response_content:
+        if agent_type == "watchdog":
+             # Already displayed inside for urgency, but ensure session state
+             st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"🚨 **SOS ACTIVATED**\n\n{response_content}",
+                "data": {"agent": "EmergencyWatchdog", "status": "Critical"}
+            })
+        elif agent_type == "clinical":
+            st.warning("🩺 Clinical Advice")
+            st.markdown(response_content)
+            
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"🩺 **Clinical Advice**\n\n{response_content}",
+                "data": {"agent": "ClinicalAdvisor", "context": formatted_data}
+            })
+        elif agent_type == "support":
+            st.success("🧠 Support Plan")
+            st.markdown(response_content)
+            
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": f"🧠 **Support Plan**\n\n{response_content}",
+                "data": {"agent": "SupportAgent", "context": formatted_data}
+            })

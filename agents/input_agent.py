@@ -15,7 +15,8 @@ class InputAgent(BaseSupportAgent):
                 "3. Use 'extract_narrative_data' to structure it into JSON.",
                 "4. CHECK FOR SOS SIGNALS immediately.",
                 "5. Use 'check_safety' to ensure the narrative doesn't describe dangerous actions against NgActions.",
-                "6. Pass the structured data to the Support Agent if safe, OR use 'create_support_log' if it's a completed report."
+                "6. Pass the structured data to the Support Agent if safe, OR use 'create_support_log' if it's a completed report.",
+                "7. LANGUAGE: ALWAYS RESPOND IN JAPANESE."
             ],
             tools=[ExtractionToolkit(), LogToolkit()]
         )
