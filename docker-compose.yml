@@ -1,4 +1,17 @@
 services:
+  app:
+    build: .
+    container_name: support-agent-app
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+    depends_on:
+      - neo4j
+    restart: always
+
   neo4j:
     image: neo4j:5.15-community
     container_name: support-db-neo4j
@@ -14,8 +27,8 @@ services:
       # プラグイン（将来的にGraphRAGなどでベクトル検索が必要になった場合に備えAPOCを有効化）
       - NEO4J_PLUGINS=["apoc"]
     volumes:
-      - ./neo4j_data:/data       # 【重要】データをローカルフォルダに保存
+      - ./neo4j_data:/data # 【重要】データをローカルフォルダに保存
       - ./neo4j_logs:/logs
       - ./neo4j_plugins:/plugins
-      - ./neo4j_backup:/backup   # バックアップ用ディレクトリ
+      - ./neo4j_backup:/backup # バックアップ用ディレクトリ
     restart: unless-stopped
