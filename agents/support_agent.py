@@ -3,6 +3,7 @@ from tools.neo4j_toolkit import Neo4jToolkit
 from tools.resilience_toolkit import ResilienceToolkit
 from tools.care_toolkit import CareToolkit
 from tools.report_toolkit import ReportToolkit
+from tools.memory_toolkit import VectorMemoryToolkit
 
 class SupportAgent(BaseSupportAgent):
     def __init__(self):
@@ -21,7 +22,8 @@ class SupportAgent(BaseSupportAgent):
                 "- Use `analyze_transition_impact` to assess risks when a key person is unavailable.",
                 "- Use `suggest_alternatives` to find backup services.",
                 "- Use `analyze_feedback` to find CarePreferences that have worked in the past.",
-                "- Use `generate_excel_report` if the user asks for a file export."
+                "- Use `generate_excel_report` if the user asks for a file export.",
+                "- Use `search_similar_logs` to find past precedents for vague situations or 'has this happened before?' questions."
             ],
-            tools=[Neo4jToolkit(), ResilienceToolkit(), CareToolkit(), ReportToolkit()], 
+            tools=[Neo4jToolkit(), ResilienceToolkit(), CareToolkit(), ReportToolkit(), VectorMemoryToolkit()], 
         )
