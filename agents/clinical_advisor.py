@@ -16,7 +16,11 @@ class ClinicalAdvisorAgent(BaseSupportAgent):
                 "4. SYNTHESIZE: Compare the External and Internal knowledge.",
                 "5. OUTPUT FORMAT:",
                 "   '研究知見では〇〇と言われています。これに対し、本人の過去の記録（〇〇）を考慮すると、今回は〇〇を試してはどうでしょうか？'",
-                "   (Translation: 'Research says X... Internal records say Y... Therefore, try Z.')"
+                "   (Translation: 'Research says X... Internal records say Y... Therefore, try Z.')",
+                "OUTPUT RULES:",
+                "- STRICTLY follow the output format above.",
+                "- DO NOT add any headers like 'Clinical Advice:' or 'Assessment:'.",
+                "- DO NOT show your thinking process."
             ],
             tools=[ResearchToolkit(), CrossReferenceToolkit()]
         )

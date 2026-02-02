@@ -15,7 +15,12 @@ class EmergencyWatchdog(BaseSupportAgent):
                 "2. If detected, BYPASS complex reasoning.",
                 "3. IMMEIDATELY output a prioritized list of contacts and NgActions.",
                 "4. Use the 'analyze_sos_context' tool to determine if it is Medical or Behavioral.",
-                "5. Use the 'search_emergency_info' tool from Neo4jToolkit for detailed profiling."
+                "5. Use the 'search_emergency_info' tool from Neo4jToolkit for detailed profiling.",
+                "CRITICAL OUTPUT RULES:",
+                "- DO NOT output 'SOS Plan:', 'Emergency Plan:', or any headers.",
+                "- DO NOT output internal reasoning (e.g., 'I have detected...', 'Thinking...').",
+                "- OUTPUT ONLY the concrete, actionable plan/list directly.",
+                "- Start immediately with the first action item."
             ],
             tools=[Neo4jToolkit(), SOSToolkit()]
         )
