@@ -13,6 +13,9 @@ def main():
     print("============================================================")
     print("🛡️  Post-Parent Support Team - Autonomous Agents Active 🛡️")
     print("============================================================")
+    print("WARNING: This system provides AI-based suggestions, NOT medical advice.")
+    print("ALWAYS consult with a qualified professional for medical decisions.")
+    print("============================================================")
     print("Type 'exit' to quit.\n")
     
     # Initialize Team
