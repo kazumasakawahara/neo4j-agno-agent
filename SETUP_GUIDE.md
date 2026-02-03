@@ -85,7 +85,7 @@ uv sync
 まずは情報の保管庫（データベース）を起動します。
 
 ```bash
-docker-compose up -d
+docker-compose up -d neo4j
 ```
 > ※ 初回は必要なデータをダウンロードするため、数分かかることがあります。
 
