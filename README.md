@@ -53,6 +53,8 @@ docker-compose up --build
 
 詳しい使い方は [SETUP_GUIDE.md](./SETUP_GUIDE.md) をご覧ください。
 
+さらに高度な分析（Claude Desktopとの連携など）を行いたい場合は、[ADVANCED_USAGE.md](./docs/ADVANCED_USAGE.md) を参照してください。
+
 ## 🛡 プライバシーと安全性
 
 - **ローカル完結**: データはすべてあなたのPC内（Dockerコンテナ内）のNeo4jデータベースに保存されます。クラウドに個人情報が漏れることはありません。
