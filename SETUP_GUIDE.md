@@ -103,6 +103,7 @@ uv run python main.py
 ============================================================
 🛡️  Post-Parent Support Team - Autonomous Agents Active 🛡️
 ============================================================
+Type 'exit' to quit.
 
 📝 Enter narrative/report (or 'exit'):
 >> 
@@ -113,6 +114,7 @@ uv run python main.py
 **例:**
 - 「今日の山田さんはとても落ち着いていました」
 - 「緊急！田中さんが発作を起こしました！」
+  - ※ 危険な行動（自傷・パニック等）が含まれる場合、自動的に **「臨床アドバイザー (Clinical Advisor)」** が起動し、行動分析と専門的な対応策を提案します。
 
 ---
 
