@@ -76,44 +76,63 @@
 
         <div class="mermaid">
             flowchart TD
-            User("👤 ユーザー (支援者)") -->|自然言語入力| Main["Orchestrator (main.py)"]
+            %% Node Definitions
+            UserNode("👤 ユーザー (User)")
+            MainNode["Orchestrator (Main)"]
+            WatchdogNode["🐕 EmergencyWatchdog"]
+            EmergencyNode["⚡ Fast Path Protocol"]
+            AlertNode["LINE通知 / 救急情報表示"]
+            InputNode["📝 InputAgent"]
+            ParsingNode["Gemini 2.0 Flash"]
+            CheckBehaviorNode{"行動障害判定"}
+            ClinicalNode["🩺 ClinicalAdvisorAgent"]
+            SupportNode["🧠 SupportAgent"]
+            WebSearchNode["🌐 DuckDuckGo"]
+            Neo4jNode[("Neo4j Graph DB")]
+            ContextNode["❓ 状況確認 (Context Mining)"]
+            ActionNode["提案 / ログ記録"]
 
-            subgraph AgentTeam ["Agent Team"]
-            Main -->|1. Check| Watchdog["🐕 EmergencyWatchdog"]
+            %% Flow
+            UserNode -->|自然言語入力| MainNode
+            MainNode -->|1. Check| WatchdogNode
 
-            Watchdog -- "🚨 SOS検知 (Yes)" --> Emergency["⚡ Fast Path Protocol"]
-            Emergency -->|即時対応| Alert["LINE通知 / 救急情報表示"]
+            %% Watchdog Logic
+            WatchdogNode -- "SOS検知" --> EmergencyNode
+            EmergencyNode -->|即時対応| AlertNode
+            AlertNode --> UserNode
 
-            Watchdog -- "安全 (No)" --> InputAgent["📝 InputAgent"]
-            InputAgent -->|2. 抽出 & 構造化| Parsing["Gemini 2.0 Flash"]
-            Parsing -->|JSONデータ| CheckBehavior{"行動障害判定"}
+            WatchdogNode -- "安全" --> InputNode
+            InputNode -->|2. 抽出| ParsingNode
+            ParsingNode -->|JSON| CheckBehaviorNode
 
-            CheckBehavior -- "Yes (パニック/拒否等)" --> Clinical["🩺 ClinicalAdvisorAgent"]
-            CheckBehavior -- "No (通常)" --> Support["🧠 SupportAgent"]
+            %% Behavior Check
+            CheckBehaviorNode -- "行動障害" --> ClinicalNode
+            CheckBehaviorNode -- "通常" --> SupportNode
 
-            Clinical <-->|3a. 外部検索| WebSearch["🌐 DuckDuckGo (ResearchToolkit)"]
-                Clinical <-->|3b. 内部照合| Neo4jDB["Neo4j Graph DB"]
-                    Clinical -->|4a. 統合アドバイス| Action
+            %% Clinical Logic
+            ClinicalNode <-->|3a. 検索| WebSearchNode
+                ClinicalNode <-->|3b. 照合| Neo4jNode
+                    ClinicalNode -->|4a. 統合| ActionNode
 
-                    Support <-->|3. 参照 & 推論| Neo4jDB
-                        Support -->|4. 提案 + 根拠| Action["提案 / ログ記録"]
-                        Support -.->|5. 質問 Why| Questionnaire["❓ 状況確認 (Context Mining)"]
-                        end
+                    %% Support Logic (Updated)
+                    SupportNode <-->|3. 参照| Neo4jNode
+                        SupportNode -->|4. 提案| ActionNode
+                        SupportNode -.->|5. 質問 Why| ContextNode
 
-                        Action --> User
-                        Alert --> User
-                        Questionnaire --> User
+                        %% Feedback Loops
+                        ActionNode --> UserNode
+                        ContextNode --> UserNode
+                        UserNode -.->|6. 回答| SupportNode
+                        SupportNode -->|7. 蓄積| Neo4jNode
 
-                        User -.->|6. 回答 (理由/状況)| Support
-                        Support -->|7. 知識蓄積 Success/Risk| Neo4jDB
-
-                        style Watchdog fill:#ffe6e6,stroke:#d63384,stroke-width:2px
-                        style InputAgent fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
-                        style Support fill:#e6fffa,stroke:#00b894,stroke-width:2px
-                        style Clinical fill:#fff8e1,stroke:#ffc107,stroke-width:2px
-                        style Neo4jDB fill:#fff3cd,stroke:#ffc107,stroke-width:2px
-                        style Questionnaire fill:#e8f5e9,stroke:#4caf50,stroke-width:2px,stroke-dasharray: 5 5
-                        style WebSearch fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,stroke-dasharray: 5 5
+                        %% Styling
+                        style WatchdogNode fill:#ffe6e6,stroke:#d63384,stroke-width:2px
+                        style InputNode fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
+                        style SupportNode fill:#e6fffa,stroke:#00b894,stroke-width:2px
+                        style ClinicalNode fill:#fff8e1,stroke:#ffc107,stroke-width:2px
+                        style Neo4jNode fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+                        style ContextNode fill:#e8f5e9,stroke:#4caf50,stroke-width:2px,stroke-dasharray: 5 5
+                        style WebSearchNode fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,stroke-dasharray: 5 5
         </div>
 
         <div class="description">
@@ -126,23 +145,20 @@
 
             <div class="agent-card input-agent">
                 <strong>📝 InputAgent (書記・受付)</strong>
-                <p>曖昧な物語調のテキストを読み解き、データベースに登録できる形（JSON）に整理整頓します。同時に「禁忌事項（やってはいけないこと）」に触れていないかの安全チェックも行います。</p>
+                <p>曖昧な物語調のテキストを読み解き、データベースに登録できる形（JSON）に整理整頓します。同時に「禁忌事項」に触れていないかの安全チェックも行います。</p>
             </div>
 
             <div class="agent-card support-agent">
                 <strong>🧠 SupportAgent (参謀・ケアマネージャー)</strong>
-                <p>整理された情報と、データベースにある過去の記憶（生育歴、成功体験、願い）を突き合わせます。「親ならどうするか？」という視点で、最適なケアプランを提案したり、<strong>「なぜ？」と問いかけて成功・失敗の要因（暗黙知）を引き出し、知識として蓄積します。</strong>
+                <p>過去の記憶を参照し、最適なケアプランを提案します。<strong>「Context Mining」により、成功・失敗の要因（暗黙知）を質問し、知識として蓄積する機能を持っています。</strong>
                 </p>
             </div>
 
             <div class="agent-card clinical-agent">
                 <strong>🩺 ClinicalAdvisorAgent (臨床アドバイザー)</strong>
-                <p>行動障害（パニック・拒否等）が検知された場合に登場します。DuckDuckGoで検索した外部の科学的知見（PBS）と、Neo4j内の本人の個別記録をクロスチェックし、根拠に基づいた介入案をアドバイスします。
-                </p>
+                <p>行動障害（パニック等）に対し、外部の科学的知見と内部の記録をクロスチェックしてアドバイスを行います。</p>
             </div>
         </div>
-    </div>
-    </div>
     </div>
 
 </body>
