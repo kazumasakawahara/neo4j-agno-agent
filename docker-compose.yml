@@ -10,6 +10,9 @@ services:
       - NEO4J_URI=bolt://neo4j:7687
     depends_on:
       - neo4j
+    volumes:
+      - ./:/app
+      - /app/.venv
     restart: always
 
   neo4j:

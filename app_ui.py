@@ -12,13 +12,8 @@ from agents.clinical_advisor import ClinicalAdvisorAgent
 # Load Environment Variables
 load_dotenv()
 
-# Page Config
-st.set_page_config(
-    page_title="Post-Parent Support Team",
-    page_icon="🛡️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Page Config handled by app.py
+# st.set_page_config(...) commented out for unified navigation
 
 # Custom CSS for Premium Look
 st.markdown("""

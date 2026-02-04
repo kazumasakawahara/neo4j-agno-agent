@@ -21,12 +21,8 @@ from skills.report_generator.pdf_exporter import generate_emergency_sheet_pdf
 import os
 
 # --- 初期設定 ---
-st.set_page_config(
-    page_title="親亡き後支援DB", 
-    layout="wide",
-    page_icon="📖",
-    initial_sidebar_state="expanded"
-)
+# Page Config handled by app.py
+# st.set_page_config(...) commented out for unified navigation
 
 init_session_state()
 

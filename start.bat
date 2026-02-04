@@ -33,7 +33,7 @@ docker-compose up -d neo4j
 
 echo 📊 Starting Dashboard...
 REM Start Streamlit in a new minimized window
-start "Post-Parent Dashboard" /min uv run streamlit run app_narrative.py
+start "Post-Parent Dashboard" /min uv run streamlit run app.py
 
 echo 🤖 Starting Agent Team...
 uv run python main.py
