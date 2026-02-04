@@ -30,7 +30,7 @@ class EmergencyWatchdog(BaseSupportAgent):
         Regex-based fast check.
         Returns True if SOS/Emergency keywords are found.
         """
-        sos_keywords = r"(SOS|緊急(?!連絡先)|助けて|倒れた|入院|事故|パニック|救急車)"
+        sos_keywords = r"(SOS|緊急(?!連絡先)|助けて|倒れた|入院|事故|救急車)"
         if re.search(sos_keywords, text, re.IGNORECASE):
             self.log_reasoning(f"FAST-PATH TRIGGERED: Keyword match in '{text}'")
             return True
