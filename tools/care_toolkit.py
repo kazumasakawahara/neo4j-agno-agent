@@ -7,6 +7,8 @@ class CareToolkit(Toolkit):
     def __init__(self):
         super().__init__(name="care_toolkit")
         self.register(self.analyze_feedback)
+        self.register(self.add_care_preference)
+        self.register(self.add_ng_action)
 
     def analyze_feedback(self, client_name: str, days_lookback: int = 30) -> str:
         """
@@ -53,3 +55,76 @@ class CareToolkit(Toolkit):
             "found_logs": len(logs),
             "suggestions": suggestions
         }, ensure_ascii=False, indent=2)
+
+    def add_care_preference(self, client_name: str, situation: str, instruction: str, reason: str = "") -> str:
+        """
+        Registers a new CarePreference (tacit knowledge) to the database.
+        Use this when you discover a success pattern or effective strategy.
+        
+        Args:
+            client_name: Name of the client.
+            situation: When to do this (e.g. "When panic occurs", "Before bath").
+            instruction: What to do (e.g. "Wait 5 mins", "Show picture card").
+            reason: Why effective or source (e.g. "Mother said so", "Proven effective in log").
+        """
+        client = resolve_client(client_name)
+        if not client:
+            return "Client not found."
+            
+        name = client.get('name')
+        
+        # Simple/Safe Cypher execution
+        query = """
+        MATCH (c:Client) WHERE c.name = $name
+        MERGE (cp:CarePreference {category: $situation, instruction: $instruction})
+        SET cp.priority = 'High', cp.reason = $reason, cp.updatedAt = datetime()
+        MERGE (c)-[:REQUIRES]->(cp)
+        RETURN cp
+        """
+        
+        try:
+            run_query(query, {
+                "name": name,
+                "situation": situation,
+                "instruction": instruction,
+                "reason": reason
+            })
+            return f"✅ Registered effective care: [{situation}] -> {instruction}"
+        except Exception as e:
+            return f"Error registering preference: {e}"
+
+    def add_ng_action(self, client_name: str, action: str, reason: str, risk_level: str = "High") -> str:
+        """
+        Registers a new NgAction (Contraindication/Risk) to the database.
+        Use this when a negative outcome occurs to prevent recurrence.
+        
+        Args:
+            client_name: Name of the client.
+            action: The action or situation to avoid (e.g. "Loud noises", "Giving milk").
+            reason: Why it's bad (e.g. "Causes panic", "Allergy").
+            risk_level: 'High', 'Medium', or 'Low' (default 'High').
+        """
+        client = resolve_client(client_name)
+        if not client:
+            return "Client not found."
+        
+        name = client.get('name')
+        
+        query = """
+        MATCH (c:Client) WHERE c.name = $name
+        MERGE (ng:NgAction {action: $action})
+        SET ng.reason = $reason, ng.riskLevel = $risk_level, ng.updatedAt = datetime()
+        MERGE (c)-[:MUST_AVOID]->(ng)
+        RETURN ng
+        """
+        
+        try:
+            run_query(query, {
+                "name": name,
+                "action": action,
+                "reason": reason,
+                "risk_level": risk_level
+            })
+            return f"✅ Registered risk factor: Avoid [{action}] (Reason: {reason})"
+        except Exception as e:
+            return f"Error registering NgAction: {e}"
