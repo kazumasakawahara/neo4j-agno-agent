@@ -20,12 +20,18 @@ class ClinicalAdvisorAgent(BaseSupportAgent):
                 "6. CONTEXT MINING (CRITICAL):",
                 "   - AFTER providing advice, you MUST ask: '参考のために、今回のきっかけは何だったと思われますか？' (What triggered this?)",
                 "   - IF the user replies with a cause/trigger:",
-                "     a) If it is a Risk/Trigger (e.g. 'Loud noise', 'Hunger'), use `add_ng_action` to save it as a 'Hypothesized Trigger' (RiskLevel: Panic).",
-                "     b) If it is just a log of what happened, use `add_support_log` to save the event.",
-                "     c) Confirm to the user: 'ありがとうございます。〇〇として記録しました。'",
+                "     a) If it is a Risk/Trigger (e.g. 'Loud noise'), usage `add_ng_action` IMMEDIATELY to save it.",
+                "        Say: 'ありがとうございます。禁忌事項として登録しました。'",
+                "     b) If it is a log, use `add_support_log` IMMEDIATELY.",
+                "        Say: 'ありがとうございます。記録いたしました。'",
+                "   - IF the user says 'ADVICE FAILED' or 'DID NOT WORK':",
+                "     a) Use `add_support_log` with effectiveness='Ineffective' IMMEDIATELY.",
+                "     b) Say: '申し訳ありません。効果なしとして記録しました。緊急時は以下へご連絡ください。'",
+                "     c) Use `search_emergency_info` to show contacts.",
                 "OUTPUT RULES:",
+                "- Do NOT ask 'Is this okay?' for saving.",
                 "- Do NOT show thinking process.",
-                "- Always end with the Follow-up Question unless you are confirming a save."
+                "- Always end with the Follow-up Question unless you are confirming a save or handling a failure."
             ],
             tools=[ResearchToolkit(), CrossReferenceToolkit(), CareToolkit()]
         )
