@@ -86,7 +86,7 @@
 
             Watchdog -- "安全 (No)" --> Input["📝 InputAgent"]
             Input -->|2. 抽出 & 構造化| Parsing["Gemini 2.0 Flash"]
-            Parsing -->|JSONデータ| CheckBehavior{行動障害?}
+            Parsing -->|JSONデータ| CheckBehavior{"行動障害?"}
 
             CheckBehavior -- "Yes (パニック/拒否等)" --> Clinical["🩺 ClinicalAdvisorAgent"]
             CheckBehavior -- "No (通常)" --> Support["🧠 SupportAgent"]
