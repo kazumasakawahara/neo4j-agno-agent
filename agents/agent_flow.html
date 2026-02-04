@@ -78,7 +78,8 @@
             flowchart TD
             User(["👤 ユーザー (支援者)"]) -->|自然言語入力| Main["Orchestrator (main.py)"]
 
-            subgraph AgentTeam [Agent Team]
+            subgraph AgentTeam ["Agent Team"]
+            direction TB
             Main -->|1. Check| Watchdog["🐕 EmergencyWatchdog"]
 
             Watchdog -- "🚨 SOS検知 (Yes)" --> Emergency["⚡ Fast Path Protocol"]
@@ -86,18 +87,18 @@
 
             Watchdog -- "安全 (No)" --> Input["📝 InputAgent"]
             Input -->|2. 抽出 & 構造化| Parsing["Gemini 2.0 Flash"]
-            Parsing -->|JSONデータ| CheckBehavior{"行動障害?"}
+            Parsing -->|JSONデータ| CheckBehavior{"行動障害判定"}
 
             CheckBehavior -- "Yes (パニック/拒否等)" --> Clinical["🩺 ClinicalAdvisorAgent"]
             CheckBehavior -- "No (通常)" --> Support["🧠 SupportAgent"]
 
             Clinical <-->|3a. 外部検索| WebSearch["🌐 DuckDuckGo (ResearchToolkit)"]
-                Clinical <-->|3b. 内部照合| Neo4j
+                Clinical <-->|3b. 内部照合| Neo4j[("Neo4j Graph DB")]
                     Clinical -->|4a. 統合アドバイス| Action
 
-                    Support <-->|3. 参照 & 推論| Neo4j[("Neo4j Graph DB")]
+                    Support <-->|3. 参照 & 推論| Neo4j
                         Support -->|4. 提案 + 根拠| Action["提案 / ログ記録"]
-                        Support -.->|5. 質問 (Why?)| Questionnaire["❓ 状況確認 (Context Mining)"]
+                        Support -.->|5. 質問 Why| Questionnaire["❓ 状況確認 (Context Mining)"]
                         end
 
                         Action --> User
