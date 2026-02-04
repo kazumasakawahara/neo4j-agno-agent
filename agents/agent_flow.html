@@ -97,16 +97,22 @@
 
                     Support <-->|3. 参照 & 推論| Neo4j[("Neo4j Graph DB")]
                         Support -->|4. 提案 + 根拠| Action["提案 / ログ記録"]
+                        Support -.->|5. 質問 (Why?)| Questionnaire["❓ 状況確認 (Context Mining)"]
                         end
 
                         Action --> User
                         Alert --> User
+                        Questionnaire --> User
+
+                        User -.->|6. 回答 (理由/状況)| Support
+                        Support -->|7. 知識蓄積 (Success/Risk)| Neo4j
 
                         style Watchdog fill:#ffe6e6,stroke:#d63384,stroke-width:2px
                         style Input fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
                         style Support fill:#e6fffa,stroke:#00b894,stroke-width:2px
                         style Clinical fill:#fff8e1,stroke:#ffc107,stroke-width:2px
                         style Neo4j fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+                        style Questionnaire fill:#e8f5e9,stroke:#4caf50,stroke-width:2px,stroke-dasharray: 5 5
                         style WebSearch fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,stroke-dasharray: 5 5
         </div>
 
@@ -125,7 +131,8 @@
 
             <div class="agent-card support-agent">
                 <strong>🧠 SupportAgent (参謀・ケアマネージャー)</strong>
-                <p>整理された情報と、データベースにある過去の記憶（生育歴、成功体験、願い）を突き合わせます。「親ならどうするか？」という視点で、最適なケアプランを提案したり、記録を知識として蓄積します。</p>
+                <p>整理された情報と、データベースにある過去の記憶（生育歴、成功体験、願い）を突き合わせます。「親ならどうするか？」という視点で、最適なケアプランを提案したり、<strong>「なぜ？」と問いかけて成功・失敗の要因（暗黙知）を引き出し、知識として蓄積します。</strong>
+                </p>
             </div>
 
             <div class="agent-card clinical-agent">
