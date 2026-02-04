@@ -76,27 +76,26 @@
 
         <div class="mermaid">
             flowchart TD
-            User(["👤 ユーザー (支援者)"]) -->|自然言語入力| Main["Orchestrator (main.py)"]
+            User("👤 ユーザー (支援者)") -->|自然言語入力| Main["Orchestrator (main.py)"]
 
             subgraph AgentTeam ["Agent Team"]
-            direction TB
             Main -->|1. Check| Watchdog["🐕 EmergencyWatchdog"]
 
             Watchdog -- "🚨 SOS検知 (Yes)" --> Emergency["⚡ Fast Path Protocol"]
             Emergency -->|即時対応| Alert["LINE通知 / 救急情報表示"]
 
-            Watchdog -- "安全 (No)" --> Input["📝 InputAgent"]
-            Input -->|2. 抽出 & 構造化| Parsing["Gemini 2.0 Flash"]
+            Watchdog -- "安全 (No)" --> InputAgent["📝 InputAgent"]
+            InputAgent -->|2. 抽出 & 構造化| Parsing["Gemini 2.0 Flash"]
             Parsing -->|JSONデータ| CheckBehavior{"行動障害判定"}
 
             CheckBehavior -- "Yes (パニック/拒否等)" --> Clinical["🩺 ClinicalAdvisorAgent"]
             CheckBehavior -- "No (通常)" --> Support["🧠 SupportAgent"]
 
             Clinical <-->|3a. 外部検索| WebSearch["🌐 DuckDuckGo (ResearchToolkit)"]
-                Clinical <-->|3b. 内部照合| Neo4j[("Neo4j Graph DB")]
+                Clinical <-->|3b. 内部照合| Neo4jDB["Neo4j Graph DB"]
                     Clinical -->|4a. 統合アドバイス| Action
 
-                    Support <-->|3. 参照 & 推論| Neo4j
+                    Support <-->|3. 参照 & 推論| Neo4jDB
                         Support -->|4. 提案 + 根拠| Action["提案 / ログ記録"]
                         Support -.->|5. 質問 Why| Questionnaire["❓ 状況確認 (Context Mining)"]
                         end
@@ -106,13 +105,13 @@
                         Questionnaire --> User
 
                         User -.->|6. 回答 (理由/状況)| Support
-                        Support -->|7. 知識蓄積 (Success/Risk)| Neo4j
+                        Support -->|7. 知識蓄積 Success/Risk| Neo4jDB
 
                         style Watchdog fill:#ffe6e6,stroke:#d63384,stroke-width:2px
-                        style Input fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
+                        style InputAgent fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
                         style Support fill:#e6fffa,stroke:#00b894,stroke-width:2px
                         style Clinical fill:#fff8e1,stroke:#ffc107,stroke-width:2px
-                        style Neo4j fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+                        style Neo4jDB fill:#fff3cd,stroke:#ffc107,stroke-width:2px
                         style Questionnaire fill:#e8f5e9,stroke:#4caf50,stroke-width:2px,stroke-dasharray: 5 5
                         style WebSearch fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,stroke-dasharray: 5 5
         </div>
