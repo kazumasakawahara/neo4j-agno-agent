@@ -134,7 +134,6 @@ if prompt := st.chat_input("日々の記録や、緊急の相談を入力して�
             st.markdown(f"**SOS Plan:**\n{response_content}")
 
         else:
-        else:
             # Prepare History Context (Last 3 turns to maintain context)
             history_context = ""
             recent_msgs = st.session_state.messages[-3:] if len(st.session_state.messages) > 3 else st.session_state.messages
