@@ -128,3 +128,33 @@ class CareToolkit(Toolkit):
             return f"✅ Registered risk factor: Avoid [{action}] (Reason: {reason})"
         except Exception as e:
             return f"Error registering NgAction: {e}"
+
+    def add_support_log(self, client_name: str, situation: str, action: str, effectiveness: str, note: str = "") -> str:
+        """
+        Registers a support log (Event/Intervention) to the database.
+        Use this to record what happened and how it was handled.
+        
+        Args:
+            client_name: Name of the client.
+            situation: The situation or trigger (e.g. "Panic due to loud noise").
+            action: The action taken (e.g. "Moved to quiet room").
+            effectiveness: 'Effective', 'Ineffective', or 'Unknown'.
+            note: Additional details.
+        """
+        # Create log data structure compatible with lib.db_operations
+        log_data = {
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "situation": situation,
+            "action": action,
+            "effectiveness": effectiveness,
+            "note": note,
+            "supporter": "ClinicalAdvisor" # Auto-sign as AI Agent
+        }
+        
+        from lib.db_operations import register_support_log
+        result = register_support_log(log_data, client_name)
+        
+        if result['status'] == 'success':
+            return f"✅ Logged: {situation} -> {action} ({effectiveness})"
+        else:
+            return f"Error logging: {result['message']}"
