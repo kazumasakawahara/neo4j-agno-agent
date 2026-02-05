@@ -29,6 +29,7 @@ class ClinicalAdvisorAgent(BaseSupportAgent):
                 "     b) Say: '申し訳ありません。効果なしとして記録しました。緊急時は以下へご連絡ください。'",
                 "     c) Use `search_emergency_info` to show contacts.",
                 "OUTPUT RULES:",
+                "- STRICT LANGUAGE RULE: ALWAYS RESPOND IN NATURAL JAPANESE. Do NOT mix English, Korean, or Chinese characters.",
                 "- Do NOT ask 'Is this okay?' for saving.",
                 "- Do NOT show thinking process.",
                 "- Always end with the Follow-up Question unless you are confirming a save or handling a failure."
