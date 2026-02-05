@@ -42,7 +42,7 @@ docker-compose up -d neo4j
 # Start Streamlit in background
 echo "📊 Starting Dashboard (http://localhost:8501)..."
 # We run this in background and save PID to kill it later
-uv run streamlit run app_narrative.py > /dev/null 2>&1 &
+uv run streamlit run app.py > /dev/null 2>&1 &
 STREAMLIT_PID=$!
 
 # Start Main Agent
