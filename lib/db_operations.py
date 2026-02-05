@@ -237,12 +237,14 @@ def register_to_database(data: dict, user_name: str = "system") -> dict:
         MERGE (c:Client {name: $name})
         SET c.dob = CASE WHEN $dob IS NOT NULL THEN date($dob) ELSE c.dob END,
             c.bloodType = COALESCE($blood, c.bloodType),
-            c.kana = COALESCE($kana, c.kana)
+            c.kana = COALESCE($kana, c.kana),
+            c.aliases = $aliases
     """, {
         "name": client_name,
         "dob": data['client'].get('dob'),
         "blood": data['client'].get('bloodType'),
-        "kana": data['client'].get('kana')
+        "kana": data['client'].get('kana'),
+        "aliases": data['client'].get('aliases', [])
     })
 
     # 監査ログ: クライアント登録/更新
@@ -555,15 +557,16 @@ def resolve_client(identifier: str) -> Optional[dict]:
         if result:
             return result[0]
 
-    # 氏名またはふりがなで検索（完全一致）
+    # 氏名またはふりがな、または通称で検索（完全一致）
     result = run_query("""
         MATCH (c:Client)
         OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-        WHERE i.name = $name OR c.name = $name OR c.kana = $name
+        WHERE i.name = $name OR c.name = $name OR c.kana = $name OR $name IN c.aliases
         RETURN c.clientId as clientId,
                c.displayCode as displayCode,
                c.bloodType as bloodType,
                c.kana as kana,
+               c.aliases as aliases,
                COALESCE(i.name, c.name) as name,
                COALESCE(i.dob, c.dob) as dob
         LIMIT 1
@@ -576,11 +579,13 @@ def resolve_client(identifier: str) -> Optional[dict]:
     result = run_query("""
         MATCH (c:Client)
         OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-        WHERE c.name CONTAINS $name OR c.kana CONTAINS $name
+        WHERE c.name CONTAINS $name OR c.kana CONTAINS $name 
+           OR ANY(alias IN c.aliases WHERE alias CONTAINS $name)
         RETURN c.clientId as clientId,
                c.displayCode as displayCode,
                c.bloodType as bloodType,
                c.kana as kana,
+               c.aliases as aliases,
                COALESCE(i.name, c.name) as name,
                COALESCE(i.dob, c.dob) as dob
         LIMIT 1
@@ -598,7 +603,7 @@ def get_clients_list_extended(include_pii: bool = True) -> list:
 
     Returns:
         [
-            {"clientId": "c-xxx", "displayCode": "A-001", "name": "山田健太", "kana": "やまだけんた"},
+            {"clientId": "c-xxx", "displayCode": "A-001", "name": "山田健太", "kana": "やまだけんた", "aliases": [...]},
             ...
         ]
     """
@@ -609,6 +614,7 @@ def get_clients_list_extended(include_pii: bool = True) -> list:
             RETURN c.clientId as clientId,
                    c.displayCode as displayCode,
                    c.kana as kana,
+                   c.aliases as aliases,
                    COALESCE(i.name, c.name) as name
             ORDER BY COALESCE(c.displayCode, c.name)
         """)

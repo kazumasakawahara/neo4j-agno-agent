@@ -240,6 +240,15 @@ def render_edit_step():
                 placeholder="例: やまだけんた",
                 key="client_kana"
             )
+            
+            # Aliases Input
+            aliases_str = st.text_input(
+                "通称・表記揺れ (カンマ区切り)",
+                value=", ".join(data.get('client', {}).get('aliases', [])),
+                placeholder="例: 佐々木まり, まりちゃん",
+                key="client_aliases"
+            )
+            data['client']['aliases'] = [a.strip() for a in aliases_str.split(',') if a.strip()]
         with col2:
             dob_value = safe_date_parse(data.get('client', {}).get('dob'))
             dob = st.date_input(
