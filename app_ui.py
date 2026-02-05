@@ -117,7 +117,7 @@ if prompt := st.chat_input("日々の記録や、緊急の相談を入力して�
         "content": response_content,
         "data": {
             "agent": "UnifiedSupportAgent",
-            "tools_used": response.run_details,
+            "tools_used": getattr(response, 'tools', None) or getattr(response, 'messages', None),
         }
     })
 

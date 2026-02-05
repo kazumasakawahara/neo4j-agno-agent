@@ -264,7 +264,7 @@ class Neo4jToolkit(Toolkit):
     def verify_client_identity(self, name_input: str) -> str:
         """
         Check if a client exists and return the official name and match type.
-        Use this BEFORE accessing sensitive data if the user input might be an alias or abbreviation.
+        This uses a scoring system to find the best possible match.
         
         Args:
             name_input: The name provided by the user (e.g., 'Mari-chan').
@@ -274,51 +274,52 @@ class Neo4jToolkit(Toolkit):
         """
         try:
             clean_name = name_input.strip()
-            # Basic validation
             if not clean_name:
                 return json.dumps({"status": "error", "message": "Empty input"})
-                
-            # Use the robust query logic but purely for identification
-            query = """
-            // 1. Strict Name Match
-            MATCH (c:Client)
-            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-            WHERE (i.name = $name) OR (c.name = $name)
-            RETURN COALESCE(i.name, c.name) as name, 'exact' as type
-            
-            UNION
-            
-            // 2. Alias/Kana Match (High Confidence but different string)
-            MATCH (c:Client)
-            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-            WHERE (c.kana = $name) OR ($name IN c.aliases)
-            RETURN COALESCE(i.name, c.name) as name, 'alias' as type
-            
-            UNION
 
-            // 3. Fuzzy/Partial Match (Low Confidence)
+            # New scoring-based query for robust matching
+            query = """
             MATCH (c:Client)
             OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-            WHERE 
-               (c.name CONTAINS $name) OR 
-               (c.kana CONTAINS $name) OR
-               ANY(alias IN c.aliases WHERE alias CONTAINS $name)
-            RETURN COALESCE(i.name, c.name) as name, 'fuzzy' as type
+            WITH c, i, $name AS inputName
+            
+            // Calculate a score based on match quality
+            WITH c, i, inputName,
+                CASE
+                    WHEN COALESCE(i.name, c.name) = inputName THEN 100 // Exact official name
+                    WHEN c.kana = inputName THEN 90                   // Exact kana match
+                    WHEN inputName IN c.aliases THEN 80              // Exact alias match
+                    WHEN COALESCE(i.name, c.name) CONTAINS inputName THEN 20 // Partial name match
+                    WHEN c.kana CONTAINS inputName THEN 10           // Partial kana match
+                    ELSE 0
+                END AS score
+            
+            // Filter out non-matches and order by the best score
+            WHERE score > 0
+            RETURN
+                COALESCE(i.name, c.name) AS name,
+                score,
+                CASE
+                    WHEN score >= 100 THEN 'exact'
+                    WHEN score >= 80 THEN 'alias'
+                    ELSE 'fuzzy'
+                END AS type
+            ORDER BY score DESC
             LIMIT 1
             """
-            
+
             with self.driver.session() as session:
                 result = session.run(query, name=clean_name)
-                data = [record.data() for record in result]
-                
-                if not data:
+                record = result.single()
+
+                if not record:
                     return json.dumps({"status": "not_found", "input": name_input})
-                
-                record = data[0]
+
                 return json.dumps({
                     "status": "found",
                     "official_name": record['name'],
                     "match_type": record['type'],
+                    "score": record['score'],
                     "input": name_input
                 }, ensure_ascii=False)
                 

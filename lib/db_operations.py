@@ -590,13 +590,13 @@ def resolve_client(identifier: str) -> Optional[dict]:
 
     # 氏名またはふりがな、または通称で検索（完全一致）
     # 入力自体または正規化後の両方を試す
+    # NOTE: OPTIONAL MATCHはWHEREの後に配置する（クエリ実行順序の問題回避）
     result = run_query("""
         MATCH (c:Client)
+        WHERE c.name IN [$raw, $clean]
+           OR c.kana IN [$raw, $clean]
+           OR ANY(alias IN COALESCE(c.aliases, []) WHERE alias IN [$raw, $clean])
         OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-        WHERE i.name IN [$raw, $clean] 
-           OR c.name IN [$raw, $clean] 
-           OR c.kana IN [$raw, $clean] 
-           OR ANY(alias IN c.aliases WHERE alias IN [$raw, $clean])
         RETURN c.clientId as clientId,
                c.displayCode as displayCode,
                c.bloodType as bloodType,
@@ -614,10 +614,10 @@ def resolve_client(identifier: str) -> Optional[dict]:
     # DBの名前が入力を含む場合 OR *入力がDBの名前を含む場合* (双方向)
     result = run_query("""
         MATCH (c:Client)
-        OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
         WHERE (c.name CONTAINS $clean OR $clean CONTAINS c.name)
-           OR (c.kana CONTAINS $clean OR $clean CONTAINS c.kana)
-           OR ANY(alias IN c.aliases WHERE alias CONTAINS $clean OR $clean CONTAINS alias)
+           OR (c.kana IS NOT NULL AND (c.kana CONTAINS $clean OR $clean CONTAINS c.kana))
+           OR ANY(alias IN COALESCE(c.aliases, []) WHERE alias CONTAINS $clean OR $clean CONTAINS alias)
+        OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
         RETURN c.clientId as clientId,
                c.displayCode as displayCode,
                c.bloodType as bloodType,
