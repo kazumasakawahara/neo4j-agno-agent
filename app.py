@@ -1,22 +1,33 @@
 import streamlit as st
 
 # =============================================================================
-# Unified Navigation Entry Point
+# 統合ナビゲーション エントリポイント
+# 3層ワークフロー: 初期登録 → クイック記録 → Claude分析
 # =============================================================================
 
-# Define pages using existing files
-# Note: st.Page requires Streamlit >= 1.31
-support_page = st.Page("app_ui.py", title="Support Team", icon="🛡️")
-narrative_page = st.Page("app_narrative.py", title="Narrative Archive", icon="📖")
-
 st.set_page_config(
-    page_title="Post-Parent Support System",
+    page_title="親亡き後支援システム",
     layout="wide",
-    page_icon="🛡️"
+    page_icon="🏠"
 )
 
-# Navigation Setup
-pg = st.navigation([support_page, narrative_page])
+# ページ定義（セクション分けしたナビゲーション）
+pg = st.navigation({
+    "ホーム": [
+        st.Page("pages/home.py", title="ダッシュボード", icon="🏠", default=True),
+    ],
+    "記録・登録": [
+        st.Page("app_narrative.py", title="初期登録", icon="📋"),
+        st.Page("app_quick_log.py", title="クイック記録", icon="⚡"),
+    ],
+    "管理": [
+        st.Page("pages/client_list.py", title="クライアント一覧", icon="👥"),
+    ],
+    "活用": [
+        st.Page("pages/claude_guide.py", title="Claude活用ガイド", icon="🤖"),
+        st.Page("app_ui.py", title="AIチャット", icon="🛡️"),
+    ],
+})
 
-# Run the selected page
+# 選択されたページを実行
 pg.run()

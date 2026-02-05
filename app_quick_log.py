@@ -24,12 +24,13 @@ from lib.utils import init_session_state
 from lib.voice_input import render_voice_input
 
 # --- ページ設定 ---
-st.set_page_config(
-    page_title="かんたん記録",
-    layout="centered",
-    page_icon="📝",
-    initial_sidebar_state="collapsed"
-)
+# Page Config handled by app.py (unified navigation)
+# st.set_page_config(
+#     page_title="かんたん記録",
+#     layout="centered",
+#     page_icon="📝",
+#     initial_sidebar_state="collapsed"
+# )
 
 # --- スタイル（モバイル最適化） ---
 st.markdown("""

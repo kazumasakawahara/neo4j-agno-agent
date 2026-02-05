@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Post-Parent Support Agent Architecture</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+    </script>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            text-align: center;
+            color: #1E3A5F;
+        }
+
+        .description {
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .agent-card {
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .watchdog {
+            background-color: #fff0f0;
+            border-left: 5px solid #dc3545;
+        }
+
+        .input-agent {
+            background-color: #f0f8ff;
+            border-left: 5px solid #0d6efd;
+        }
+
+        .support-agent {
+            background-color: #f0fff4;
+            border-left: 5px solid #198754;
+        }
+
+        .clinical-agent {
+            background-color: #fff8e1;
+            border-left: 5px solid #ffc107;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <h1>Post-Parent Support Agent Team</h1>
+
+        <div class="description">
+            <p>このシステムでは、単一のAIではなく、専門役割を持った3つのエージェントがチームとして連携して動作します。</p>
+        </div>
+
+        <div class="mermaid">
+            flowchart TD
+            %% Node Definitions
+            UserNode("👤 ユーザー (User)")
+            MainNode["Orchestrator (Main)"]
+            WatchdogNode["🐕 EmergencyWatchdog"]
+            EmergencyNode["⚡ Fast Path Protocol"]
+            AlertNode["LINE通知 / 救急情報表示"]
+            InputNode["📝 InputAgent"]
+            ParsingNode["Gemini 2.0 Flash"]
+            CheckBehaviorNode{"行動障害判定"}
+            ClinicalNode["🩺 ClinicalAdvisorAgent"]
+            SupportNode["🧠 SupportAgent"]
+            WebSearchNode["🌐 DuckDuckGo"]
+            Neo4jNode[("Neo4j Graph DB")]
+            ContextNode["❓ 状況確認 (Context Mining)"]
+            ActionNode["提案 / ログ記録"]
+
+            %% Flow
+            UserNode -->|自然言語入力| MainNode
+            MainNode -->|1. Check| WatchdogNode
+
+            %% Watchdog Logic
+            WatchdogNode -- "SOS検知" --> EmergencyNode
+            EmergencyNode -->|即時対応| AlertNode
+            AlertNode --> UserNode
+
+            WatchdogNode -- "安全" --> InputNode
+            InputNode -->|2. 抽出| ParsingNode
+            ParsingNode -->|JSON| CheckBehaviorNode
+
+            %% Behavior Check
+            CheckBehaviorNode -- "行動障害" --> ClinicalNode
+            CheckBehaviorNode -- "通常" --> SupportNode
+
+            %% Clinical Logic
+            ClinicalNode <-->|3a. 検索| WebSearchNode
+                ClinicalNode <-->|3b. 照合| Neo4jNode
+                    ClinicalNode -->|4a. 統合| ActionNode
+
+                    %% Support Logic (Updated)
+                    SupportNode <-->|3. 参照| Neo4jNode
+                        SupportNode -->|4. 提案| ActionNode
+                        SupportNode -.->|5. 質問 Why| ContextNode
+
+                        %% Feedback Loops
+                        ActionNode --> UserNode
+                        ContextNode --> UserNode
+                        UserNode -.->|6. 回答| SupportNode
+                        SupportNode -->|7. 蓄積| Neo4jNode
+
+                        %% Styling
+                        style WatchdogNode fill:#ffe6e6,stroke:#d63384,stroke-width:2px
+                        style InputNode fill:#e6f3ff,stroke:#0d6efd,stroke-width:2px
+                        style SupportNode fill:#e6fffa,stroke:#00b894,stroke-width:2px
+                        style ClinicalNode fill:#fff8e1,stroke:#ffc107,stroke-width:2px
+                        style Neo4jNode fill:#fff3cd,stroke:#ffc107,stroke-width:2px
+                        style ContextNode fill:#e8f5e9,stroke:#4caf50,stroke-width:2px,stroke-dasharray: 5 5
+                        style WebSearchNode fill:#f8f9fa,stroke:#6c757d,stroke-width:1px,stroke-dasharray: 5 5
+        </div>
+
+        <div class="description">
+            <h3>エージェントの役割分担</h3>
+
+            <div class="agent-card watchdog">
+                <strong>🐕 EmergencyWatchdog (番犬)</strong>
+                <p>全ての入力の最初に「緊急性」をチェックします。SOSやパニック等のキーワードを検知すると、複雑な推論をスキップして即座に命を守る行動（Fast Path）をトリガーします。</p>
+            </div>
+
+            <div class="agent-card input-agent">
+                <strong>📝 InputAgent (書記・受付)</strong>
+                <p>曖昧な物語調のテキストを読み解き、データベースに登録できる形（JSON）に整理整頓します。同時に「禁忌事項」に触れていないかの安全チェックも行います。</p>
+            </div>
+
+            <div class="agent-card support-agent">
+                <strong>🧠 SupportAgent (参謀・ケアマネージャー)</strong>
+                <p>過去の記憶を参照し、最適なケアプランを提案します。<strong>「Context Mining」により、成功・失敗の要因（暗黙知）を質問し、知識として蓄積する機能を持っています。</strong>
+                </p>
+            </div>
+
+            <div class="agent-card clinical-agent">
+                <strong>🩺 ClinicalAdvisorAgent (臨床アドバイザー)</strong>
+                <p>行動障害（パニック等）に対し、外部の科学的知見と内部の記録をクロスチェックしてアドバイスを行います。</p>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

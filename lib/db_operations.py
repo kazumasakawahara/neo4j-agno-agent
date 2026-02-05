@@ -732,3 +732,161 @@ def get_display_name(identifier: str, fallback: str = "不明") -> str:
     if client:
         return client.get('name') or client.get('displayCode') or fallback
     return fallback
+
+
+# =============================================================================
+# ダッシュボード用関数
+# =============================================================================
+
+def get_dashboard_stats():
+    """
+    ダッシュボード用統計情報を取得
+
+    Returns:
+        dict: {
+            'monthly_logs': 今月の支援記録数,
+            'upcoming_renewals': 30日以内の期限数,
+            'total_ng_actions': 禁忌事項の総数
+        }
+    """
+    try:
+        monthly_logs = run_query("""
+            MATCH (log:SupportLog)
+            WHERE log.date >= date({year: date().year, month: date().month, day: 1})
+            RETURN count(log) as count
+        """)[0]['count']
+    except Exception:
+        monthly_logs = 0
+
+    try:
+        upcoming_renewals = run_query("""
+            MATCH (c:Client)-[:HAS_CERTIFICATE]->(cert:Certificate)
+            WHERE cert.nextRenewalDate IS NOT NULL
+              AND cert.nextRenewalDate <= date() + duration({days: 30})
+              AND cert.nextRenewalDate >= date()
+            RETURN count(cert) as count
+        """)[0]['count']
+    except Exception:
+        upcoming_renewals = 0
+
+    try:
+        total_ng = run_query("""
+            MATCH (:Client)-[:MUST_AVOID]->(ng:NgAction)
+            RETURN count(ng) as count
+        """)[0]['count']
+    except Exception:
+        total_ng = 0
+
+    return {
+        'monthly_logs': monthly_logs,
+        'upcoming_renewals': upcoming_renewals,
+        'total_ng_actions': total_ng
+    }
+
+
+def get_upcoming_renewals(days_ahead: int = 90, limit: int = 10) -> list:
+    """
+    期限が近い証明書の一覧を取得
+
+    Args:
+        days_ahead: 何日先までチェックするか
+        limit: 取得件数
+
+    Returns:
+        証明書のリスト（期限が近い順）
+    """
+    try:
+        return run_query("""
+            MATCH (c:Client)-[:HAS_CERTIFICATE]->(cert:Certificate)
+            WHERE cert.nextRenewalDate IS NOT NULL
+              AND cert.nextRenewalDate <= date() + duration({days: $days})
+              AND cert.nextRenewalDate >= date()
+            RETURN c.name as client_name,
+                   cert.type as cert_type,
+                   cert.grade as grade,
+                   cert.nextRenewalDate as renewal_date,
+                   duration.inDays(date(), cert.nextRenewalDate).days as days_left
+            ORDER BY cert.nextRenewalDate ASC
+            LIMIT $limit
+        """, {"days": days_ahead, "limit": limit})
+    except Exception:
+        return []
+
+
+def get_client_detail(client_name: str) -> dict:
+    """
+    クライアント詳細情報を一括取得（展開カード用）
+
+    Args:
+        client_name: クライアント名
+
+    Returns:
+        dict: 基本情報、禁忌、効果的ケア、緊急連絡先、最近の記録
+    """
+    # 基本情報
+    try:
+        basic = run_query("""
+            MATCH (c:Client {name: $name})
+            OPTIONAL MATCH (c)-[:HAS_CONDITION]->(con:Condition)
+            OPTIONAL MATCH (c)-[:HAS_CERTIFICATE]->(cert:Certificate)
+            RETURN c.name as name, c.dob as dob, c.bloodType as bloodType,
+                   collect(DISTINCT con.name) as conditions,
+                   collect(DISTINCT {
+                       type: cert.type, grade: cert.grade,
+                       renewal: cert.nextRenewalDate
+                   }) as certificates
+        """, {"name": client_name})
+    except Exception:
+        basic = []
+
+    # 禁忌事項
+    try:
+        ng_actions = run_query("""
+            MATCH (c:Client {name: $name})-[:MUST_AVOID]->(ng:NgAction)
+            RETURN ng.action as action, ng.reason as reason, ng.riskLevel as risk
+        """, {"name": client_name})
+    except Exception:
+        ng_actions = []
+
+    # 効果的ケア
+    try:
+        care_prefs = run_query("""
+            MATCH (c:Client {name: $name})-[:REQUIRES]->(cp:CarePreference)
+            RETURN cp.category as category, cp.instruction as instruction
+            ORDER BY cp.priority DESC
+            LIMIT 5
+        """, {"name": client_name})
+    except Exception:
+        care_prefs = []
+
+    # 緊急連絡先
+    try:
+        key_persons = run_query("""
+            MATCH (c:Client {name: $name})-[r:HAS_KEY_PERSON]->(kp:KeyPerson)
+            RETURN kp.name as name, kp.phone as phone,
+                   kp.relationship as relationship, r.rank as rank
+            ORDER BY r.rank ASC
+            LIMIT 3
+        """, {"name": client_name})
+    except Exception:
+        key_persons = []
+
+    # 最近の支援記録
+    try:
+        recent_logs = run_query("""
+            MATCH (s:Supporter)-[:LOGGED]->(log:SupportLog)-[:ABOUT]->(c:Client {name: $name})
+            RETURN log.date as date, log.situation as situation,
+                   log.effectiveness as effectiveness, s.name as supporter
+            ORDER BY log.date DESC
+            LIMIT 5
+        """, {"name": client_name})
+    except Exception:
+        recent_logs = []
+
+    return {
+        'basic': basic[0] if basic else {},
+        'ng_actions': ng_actions,
+        'care_prefs': care_prefs,
+        'key_persons': key_persons,
+        'recent_logs': recent_logs
+    }

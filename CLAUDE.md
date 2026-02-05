@@ -8,57 +8,79 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Neo4j-based graph database system for managing support information for individuals with intellectual/developmental disabilities, designed to preserve parental tacit knowledge for emergency situations and post-parent care continuity.
 
-### Core Manifesto (4 Pillars)
+### Core Manifesto (5 Values + 7 Pillars)
 
+**5 Values:**
 1. **Dignity (尊厳)**: Record individuals as humans with history and will
 2. **Safety (安全)**: Emergency-first data structure with prohibition priorities
 3. **Continuity (継続性)**: Maintain care quality across support staff transitions
-4. **Advocacy (権利擁護)**: Link voiceless voices to legal backing
+4. **Resilience (強靭性)**: Visualize backup systems for parental function replacement
+5. **Advocacy (権利擁護)**: Link voiceless voices to legal backing
+
+**7 Data Pillars:**
+1. Identity & Narrative (本人性)
+2. Care Instructions (ケアの暗黙知)
+3. Safety Net (危機管理ネットワーク)
+4. Legal Basis (法的基盤)
+5. Parental Transition (親の機能移行)
+6. Financial Safety (金銭的安全)
+7. Multi-Agency Collaboration (多機関連携)
+
+See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
 
 ## Architecture
 
+### 3-Layer Workflow
+
+| Layer | Tool | Purpose | Color |
+|-------|------|---------|-------|
+| 1 | `app_narrative.py` (Streamlit) | Initial registration, bulk data entry | Blue #1565C0 |
+| 2 | `app_quick_log.py` (Streamlit) | Quick daily logging (30 seconds) | Orange #E65100 |
+| 3 | Claude Desktop + MCP | Analysis, proposals, complex operations | Purple #6A1B9A |
+
 ### System Components
 
-1. **Data Model**: 4-pillar Neo4j graph structure
-   - Pillar 1: Identity & Narrative (Client, LifeHistory, Wish)
-   - Pillar 2: Care Instructions (CarePreference, NgAction, Condition)
-   - Pillar 3: Legal Basis (Certificate, PublicAssistance)
-   - Pillar 4: Crisis Network (KeyPerson, Guardian, MedicalProvider)
+1. **Dashboard UI** (`app.py`):
+   - 4-section navigation: ホーム / 記録・登録 / 管理 / 活用
+   - `pages/home.py`: Dashboard with stats, 3-layer cards, renewal alerts
+   - `pages/client_list.py`: Searchable client list with detail cards
+   - `pages/claude_guide.py`: Claude Desktop usage guide with copyable prompts
 
-2. **UI Applications**:
-   - `app_narrative.py`: Streamlit data entry UI with narrative-style input and file upload
-   - `app_quick_log.py`: Mobile-friendly quick logging UI (record only exceptional events)
-   - `sos/app/`: Mobile SOS button app for emergency notifications
-   - `mobile/app/`: **NEW** Mobile narrative input app (voice → AI → graph)
+2. **Data Entry**:
+   - `app_narrative.py`: Streamlit data entry with narrative-style input and file upload
+   - `app_quick_log.py`: Mobile-friendly quick logging (exceptional events only)
+   - `app_ui.py`: Agno/Gemini chat-based support
 
 3. **Backend Services**:
-   - `server.py`: MCP server for Claude Desktop integration (natural language queries)
-   - `sos/api_server.py`: FastAPI server for SOS emergency notifications with LINE integration
-   - `mobile/api_server.py`: **NEW** FastAPI server for narrative input (Gemini extraction + Neo4j)
+   - `server.py`: MCP server for Claude Desktop integration (40+ tools)
+   - `sos/api_server.py`: FastAPI for SOS emergency notifications with LINE integration
+   - `mobile/api_server.py`: FastAPI for mobile narrative input (Gemini extraction + Neo4j)
 
 4. **Shared Libraries** (`lib/`):
-   - `db_operations.py`: Neo4j connection, query execution, data registration
+   - `db_operations.py`: Neo4j connection, query execution, data registration, dashboard stats
    - `ai_extractor.py`: Gemini 2.0-based text-to-structured-data extraction
    - `file_readers.py`: Multi-format file parsing (docx, xlsx, pdf, txt)
    - `utils.py`: Date parsing, session state management
 
+5. **Agent Protocols** (`agents/`):
+   - `MANIFESTO.md`: Unified manifesto v4.0 (5 values, 7 pillars, 4 AI rules)
+   - `ROUTING.md`: Guide for choosing between MCP servers
+   - `protocols/`: Emergency, Parent Down, Onboarding, Handover
+   - `workflows/`: Visit Preparation, Resilience Report, Renewal Check
+   - `base.py`, `unified_support_agent.py`: Agno/Gemini agent (used by app_ui.py)
+
 ### AI Models
 
-- **Gemini 2.0 Flash**: Narrative text structuring (extraction)
-- **Claude Desktop**: Natural language database queries (via MCP)
+- **Gemini 2.0 Flash**: Narrative text structuring (extraction) via `lib/ai_extractor.py`
+- **Claude Desktop**: Natural language database queries via MCP (`server.py`)
 
 ## Common Development Tasks
 
 ### Environment Setup
 
 ```bash
-# Install dependencies
 uv sync
-
-# Start Neo4j database (Docker required)
 docker-compose up -d
-
-# Create .env file with credentials
 cat > .env << EOF
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
@@ -70,47 +92,28 @@ EOF
 ### Running Applications
 
 ```bash
-# Main Streamlit UI (port 8501)
-uv run streamlit run app_narrative.py
+# Dashboard (port 8501) - primary entry point
+uv run streamlit run app.py
 
 # MCP Server for Claude Desktop
-# Configure in claude_desktop_config.json:
-# {
-#   "mcpServers": {
-#     "support-db": {
-#       "command": "/absolute/path/.venv/bin/python",
-#       "args": ["/absolute/path/server.py"]
-#     }
-#   }
-# }
+# Configure in claude_desktop_config.json (see docs/ADVANCED_USAGE.md)
 
 # SOS Emergency API Server (port 8000)
-cd sos
-uv run python api_server.py
+cd sos && uv run python api_server.py
+
+# Mobile Narrative API (port 8080)
+uv run python mobile/api_server.py
 ```
 
 ### Database Operations
 
 ```bash
-# Access Neo4j Browser (after docker-compose up)
+# Access Neo4j Browser
 open http://localhost:7474
 
 # Run Cypher queries via Python
 from lib.db_operations import run_query
 result = run_query("MATCH (c:Client) RETURN c.name LIMIT 10")
-```
-
-### Testing SOS System
-
-```bash
-# Start Neo4j
-docker-compose up -d
-
-# Start SOS API server
-cd sos && uv run python api_server.py
-
-# Access mobile app (replace IP and client name)
-# http://192.168.1.100:8000/app/?id=山田健太
 ```
 
 ## Key Implementation Patterns
@@ -131,31 +134,11 @@ cd sos && uv run python api_server.py
 
 ### MCP Server Tools (server.py)
 
-Available Claude Desktop commands:
+Two MCP servers are available:
+- `support-db`: Disability care support (4-pillar model)
+- `livelihood-support-db`: Livelihood support (7-pillar model, includes financial safety)
 
-**検索・閲覧系:**
-- `search_emergency_info`: Priority-ordered emergency data retrieval
-- `get_client_profile`: Complete client overview
-- `check_renewal_dates`: Certificate expiration monitoring
-- `list_clients`: Client roster
-- `get_database_stats`: Database statistics
-- `run_cypher_query`: Custom Cypher execution
-
-**支援記録系:**
-- `add_support_log`: 物語風テキストから支援記録を自動抽出・登録
-- `get_support_logs`: クライアントの支援記録履歴を取得
-- `discover_care_patterns`: 効果的なケアパターンを自動発見
-
-**監査ログ系:**
-- `get_audit_logs`: 操作履歴（誰が・いつ・何を変更）を取得
-- `get_client_change_history`: クライアント別の変更履歴を取得
-
-### SOS Emergency Notification Flow
-
-1. Mobile app (`sos/app/`) sends POST to `/api/sos`
-2. `api_server.py` queries Neo4j for client NgActions and emergency contacts
-3. Formats message with geolocation and prohibited actions
-4. Sends LINE notification to configured group
+See `agents/ROUTING.md` for guidance on choosing between them.
 
 ## Database Schema Notes
 
@@ -163,20 +146,24 @@ Available Claude Desktop commands:
 
 **Core Entities**:
 - `:Client`: Central node (name, dob, bloodType)
-- `:NgAction`: **Most critical** - prohibited actions with risk levels
+- `:NgAction`: Prohibited actions with risk levels (safety-critical)
 - `:CarePreference`: Recommended care instructions
 - `:Condition`: Medical diagnoses/characteristics
 
 **Support Network**:
 - `:KeyPerson`: Emergency contacts with priority and relationship
-- `:Guardian`: Legal guardians (成年後見人)
-- `:Lawyer`: Legal representation
-- `:Supporter`: **NEW** - Support staff who log daily care records
-- `:SupportLog`: **NEW** - Daily support records with effectiveness tracking
+- `:Guardian`: Legal guardians
+- `:Hospital`: Medical providers
+- `:Supporter`: Support staff who log daily care records
+- `:SupportLog`: Daily support records with effectiveness tracking
 
 **Legal Documentation**:
 - `:Certificate`: 手帳・受給者証 with `nextRenewalDate`
-- `:PublicAssistance`: 公的扶助 (生活保護、障害年金)
+- `:PublicAssistance`: 公的扶助
+
+**Financial Safety** (livelihood-support-db):
+- `:EconomicRisk`: Economic exploitation risks
+- `:MoneyManagement`: Financial management capability records
 
 ### Relationship Patterns
 
@@ -187,50 +174,46 @@ Available Claude Desktop commands:
 (:Client)-[:EMERGENCY_CONTACT]->(:KeyPerson)
 (:Client)-[:HAS_GUARDIAN]->(:Guardian)
 (:Client)-[:HOLDS]->(:Certificate)
-
-# NEW: Support Log Relationships
 (:Supporter)-[:LOGGED]->(:SupportLog)-[:ABOUT]->(:Client)
-(:SupportLog).effectiveness = 'Effective' | 'Neutral' | 'Ineffective'
 ```
 
 ## File Organization
 
 ```
 neo4j-agno-agent/
-├── app_narrative.py        # Main Streamlit UI
-├── app_quick_log.py        # Quick logging UI (mobile-friendly)
+├── app.py                  # Dashboard entry point (st.navigation)
+├── app_narrative.py        # Layer 1: Initial registration UI
+├── app_quick_log.py        # Layer 2: Quick logging UI
+├── app_ui.py               # Agno/Gemini chat UI
 ├── server.py               # MCP server for Claude Desktop
-├── lib/                    # Shared libraries (import from here)
-│   ├── db_operations.py    # All Neo4j operations (+ audit logging)
+├── main.py                 # CLI agent entry point (legacy)
+├── pages/                  # Dashboard sub-pages
+│   ├── home.py             # Dashboard home with stats & workflow cards
+│   ├── client_list.py      # Searchable client list
+│   └── claude_guide.py     # Claude Desktop usage guide
+├── agents/                 # Agent protocols & manifesto
+│   ├── MANIFESTO.md        # Unified manifesto v4.0
+│   ├── ROUTING.md          # MCP server selection guide
+│   ├── protocols/          # Emergency, Parent Down, Onboarding, Handover
+│   ├── workflows/          # Visit Prep, Resilience Report, Renewal Check
+│   ├── base.py             # Agno agent base class
+│   └── unified_support_agent.py  # Unified support agent
+├── lib/                    # Shared libraries
+│   ├── db_operations.py    # Neo4j operations + dashboard stats
 │   ├── ai_extractor.py     # Gemini extraction logic
 │   ├── file_readers.py     # File format parsers
-│   ├── voice_input.py      # Web Speech API component for Streamlit
+│   ├── voice_input.py      # Web Speech API component
 │   └── utils.py            # Utilities and session state
-├── mobile/                 # NEW: Mobile narrative input system
-│   ├── api_server.py       # FastAPI server (voice → Gemini → Neo4j)
-│   └── app/                # Mobile web app (HTML/JS)
-│       └── index.html      # Voice input + extraction preview UI
+├── mobile/                 # Mobile narrative input system
 ├── sos/                    # Emergency notification system
-│   ├── api_server.py       # FastAPI server
-│   └── app/                # Mobile app static files
-├── scripts/                # Utility scripts
-│   └── backup.sh           # Database backup script
+├── scripts/                # Utility scripts (backup.sh)
+├── docs/                   # Documentation
+│   ├── ADVANCED_USAGE.md   # Claude Desktop setup & usage
+│   └── DEV_NOTES.md        # Developer notes & troubleshooting
+├── archive/                # Archived legacy files
 ├── docker-compose.yml      # Neo4j container config
-├── pyproject.toml          # Dependencies (uv-managed)
-└── docs/                   # Documentation
+└── pyproject.toml          # Dependencies (uv-managed)
 ```
-
-### Backup & Recovery
-
-```bash
-# Manual backup
-./scripts/backup.sh
-
-# Scheduled backup (cron example: daily at 3 AM)
-0 3 * * * cd /path/to/neo4j-agno-agent && ./scripts/backup.sh
-```
-
-Backups are stored in `neo4j_backup/` and retained for 30 days.
 
 ## Important Constraints
 
@@ -253,7 +236,6 @@ Backups are stored in `neo4j_backup/` and retained for 30 days.
 - Gemini prompt (`EXTRACTION_PROMPT`) is authoritative for JSON schema
 - Always call `parse_json_from_response()` to handle markdown code blocks
 - Validate extracted data structure before database registration
-- Preserve original narrative text in `:LifeHistory` nodes when possible
 
 ## Dependencies
 
@@ -275,97 +257,11 @@ Backups are stored in `neo4j_backup/` and retained for 30 days.
 
 ### External Services
 
-- **LINE Messaging API**: Required for SOS notifications (get `LINE_CHANNEL_ACCESS_TOKEN` and `LINE_GROUP_ID`)
-- **Google AI API**: Required for Gemini extraction (get `GEMINI_API_KEY`)
+- **LINE Messaging API**: SOS notifications
+- **Google AI API**: Gemini extraction
 
 ## Development Context
 
-This system was developed by a lawyer working with NPOs supporting families of children with intellectual disabilities. The design prioritizes **real-world emergency scenarios** where staff need immediate access to critical care information (especially prohibitions) when primary caregivers are unavailable.
+This system was developed by a lawyer working with NPOs supporting families of children with intellectual disabilities. The design prioritizes **real-world emergency scenarios** where staff need immediate access to critical care information when primary caregivers are unavailable.
 
 **Design Philosophy**: Preserve parental tacit knowledge in structured format, queryable in natural language during crisis situations.
-
-## NEW: Support Log System (Living Database)
-
-### Concept
-The database evolves with daily support experiences. Support staff record interactions in natural language, and AI extracts:
-- What happened (situation)
-- What they did (action)
-- Whether it worked (effectiveness)
-
-Over time, the system discovers patterns: "When X happens, Y works best."
-
-### Usage Workflow
-
-**Option 1: Quick Log (Mobile-Friendly)**
-```bash
-uv run streamlit run app_quick_log.py
-# 30秒で記録完了。「普通の日」は記録不要。
-# 「😊 とても良い日！」or「🤔 気になることあり」のみ記録
-```
-
-**Option 2: Streamlit UI (Detailed)**
-```bash
-uv run streamlit run app_narrative.py
-# Input narrative text → AI extracts support logs → View in "支援記録" tab
-```
-
-**Option 3: Claude Desktop (MCP)**
-```
-User: "山田健太さんの記録を追加: 今日、サイレンで驚いてパニック。テレビを消して5分見守ったら落ち着いた。効果的でした。"
-Claude: add_support_log(client_name="山田健太", narrative_text="...")
-→ ✅ 1件の支援記録を登録しました
-
-User: "山田健太さんの効果的なケアパターンは？"
-Claude: discover_care_patterns(client_name="山田健太")
-→ パニック時: 静かな環境を作り、5分間見守る（3回効果的）
-```
-
-### Test Script
-```bash
-uv run python test_support_log.py
-# Tests 3 scenarios: daily support, emergency response, comprehensive info
-```
-
-## NEW: Mobile Narrative Input System
-
-### Concept
-Support staff can record observations using voice input on smartphones. The narrative text is automatically structured by Gemini AI and registered as graph data in Neo4j.
-
-**Flow**: 🎤 Voice → 📝 Text → 🤖 Gemini → 📊 Graph
-
-### Usage
-
-**Start the Mobile Narrative API Server (port 8080)**
-```bash
-cd neo4j-agno-agent
-uv run python mobile/api_server.py
-```
-
-**Access the Mobile App**
-- Local: http://localhost:8080/app/
-- From smartphone (same WiFi): http://<PC's IP>:8080/app/
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/clients` | GET | Get registered client list |
-| `/api/narrative/extract` | POST | Extract structured data from narrative (preview) |
-| `/api/narrative/register` | POST | Register extracted data to Neo4j |
-| `/api/clients/{name}/logs` | GET | Get support logs for a client |
-
-### Example Request
-```bash
-curl -X POST http://localhost:8080/api/narrative/extract \
-  -H "Content-Type: application/json" \
-  -d '{
-    "text": "今日、山田さんはサイレンの音でパニックになった。静かな部屋に移動して5分見守ったら落ち着いた。効果的だった。",
-    "supporter_name": "田中"
-  }'
-```
-
-### Mobile App Features
-- 🎤 Web Speech API voice input (Japanese)
-- 👤 Client selection or auto-detection from text
-- ✅ Extraction preview before registration
-- 💾 One-tap registration to Neo4j graph
