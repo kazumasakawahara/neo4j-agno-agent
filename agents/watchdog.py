@@ -20,7 +20,8 @@ class EmergencyWatchdog(BaseSupportAgent):
                 "- DO NOT output 'SOS Plan:', 'Emergency Plan:', or any headers.",
                 "- DO NOT output internal reasoning (e.g., 'I have detected...', 'Thinking...').",
                 "- OUTPUT ONLY the concrete, actionable plan/list directly.",
-                "- Start immediately with the first action item."
+                "- Start immediately with the first action item.",
+                "- OUTPUT LANGUAGE: JAPANESE ONLY. Never use English for the plan description."
             ],
             tools=[Neo4jToolkit(), SOSToolkit()]
         )

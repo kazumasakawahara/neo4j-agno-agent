@@ -507,61 +507,96 @@ def discover_care_patterns(client_name: str, min_frequency: int = 3):
 # 仮名化対応機能
 # =============================================================================
 
+def normalize_identifier(text: str) -> str:
+    """
+    識別子を正規化する（敬称の削除など）
+    
+    Args:
+        text: 入力テキスト
+        
+    Returns:
+        正規化されたテキスト
+    """
+    if not text:
+        return ""
+    
+    # 削除するサフィックス
+    suffixes = [
+        "さん", "くん", "ちゃん", "様", "氏", "殿", 
+        "San", "-san", "Chan", "-chan", "Kun", "-kun", "Sama", "-sama"
+    ]
+    
+    normalized = text.strip()
+    for suffix in suffixes:
+        if normalized.endswith(suffix):
+            normalized = normalized[:-len(suffix)].strip()
+            # 一つ削除したら終了（「〇〇さんさん」等は考慮しない）
+            break
+            
+    return normalized
+
+
 def resolve_client(identifier: str) -> Optional[dict]:
     """
     様々な識別子からクライアント情報を解決
-
+    
     対応する識別子:
     - clientId (c-xxxx) : 仮名化後の内部ID
     - displayCode (A-001) : 表示用コード
-    - name (山田健太) : 氏名（後方互換性）
-
+    - name (山田健太, 山田健太さん) : 氏名
+    - kana (やまだけんた) : ふりがな
+    - aliases (ニックネーム) : 通称
+    
     Args:
         identifier: クライアント識別子
-
+    
     Returns:
-        {
-            "clientId": "c-xxxx",
-            "displayCode": "A-001",
-            "name": "山田健太",
-            "bloodType": "A",
-            "dob": "1990-01-15"
-        }
-        または None（見つからない場合）
+        クライアント情報dict または None
     """
+    # 正規化（敬称削除）
+    clean_identifier = normalize_identifier(identifier)
+    
     # clientId で検索
-    if identifier.startswith("c-"):
+    if clean_identifier.startswith("c-"):
         result = run_query("""
             MATCH (c:Client {clientId: $id})
             OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
             RETURN c.clientId as clientId,
                    c.displayCode as displayCode,
                    c.bloodType as bloodType,
+                   c.kana as kana,
+                   c.aliases as aliases,
                    COALESCE(i.name, c.name) as name,
                    COALESCE(i.dob, c.dob) as dob
-        """, {"id": identifier})
+        """, {"id": clean_identifier})
         if result:
             return result[0]
 
     # displayCode で検索
-    if identifier.startswith("A-"):
+    if clean_identifier.startswith("A-"):
         result = run_query("""
             MATCH (c:Client {displayCode: $code})
             OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
             RETURN c.clientId as clientId,
                    c.displayCode as displayCode,
                    c.bloodType as bloodType,
+                   c.kana as kana,
+                   c.aliases as aliases,
                    COALESCE(i.name, c.name) as name,
                    COALESCE(i.dob, c.dob) as dob
-        """, {"code": identifier})
+        """, {"code": clean_identifier})
         if result:
             return result[0]
 
     # 氏名またはふりがな、または通称で検索（完全一致）
+    # 入力自体または正規化後の両方を試す
     result = run_query("""
         MATCH (c:Client)
         OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-        WHERE i.name = $name OR c.name = $name OR c.kana = $name OR $name IN c.aliases
+        WHERE i.name IN [$raw, $clean] 
+           OR c.name IN [$raw, $clean] 
+           OR c.kana IN [$raw, $clean] 
+           OR ANY(alias IN c.aliases WHERE alias IN [$raw, $clean])
         RETURN c.clientId as clientId,
                c.displayCode as displayCode,
                c.bloodType as bloodType,
@@ -570,17 +605,19 @@ def resolve_client(identifier: str) -> Optional[dict]:
                COALESCE(i.name, c.name) as name,
                COALESCE(i.dob, c.dob) as dob
         LIMIT 1
-    """, {"name": identifier})
+    """, {"raw": identifier, "clean": clean_identifier})
 
     if result:
         return result[0]
 
     # 部分一致検索（フォールバック）
+    # DBの名前が入力を含む場合 OR *入力がDBの名前を含む場合* (双方向)
     result = run_query("""
         MATCH (c:Client)
         OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-        WHERE c.name CONTAINS $name OR c.kana CONTAINS $name 
-           OR ANY(alias IN c.aliases WHERE alias CONTAINS $name)
+        WHERE (c.name CONTAINS $clean OR $clean CONTAINS c.name)
+           OR (c.kana CONTAINS $clean OR $clean CONTAINS c.kana)
+           OR ANY(alias IN c.aliases WHERE alias CONTAINS $clean OR $clean CONTAINS alias)
         RETURN c.clientId as clientId,
                c.displayCode as displayCode,
                c.bloodType as bloodType,
@@ -589,7 +626,7 @@ def resolve_client(identifier: str) -> Optional[dict]:
                COALESCE(i.name, c.name) as name,
                COALESCE(i.dob, c.dob) as dob
         LIMIT 1
-    """, {"name": identifier})
+    """, {"clean": clean_identifier})
 
     return result[0] if result else None
 

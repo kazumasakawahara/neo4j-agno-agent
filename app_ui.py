@@ -114,29 +114,33 @@ if prompt := st.chat_input("日々の記録や、緊急の相談を入力して�
         response_content = None
         agent_type = None
         
-        # 1. Watchdog
-        status.update(label="🐕 Watchdog checking for emergencies...", state="running")
-        watchdog_triggered = agents["watchdog"].check_fast_path(prompt)
+        # 1. Distribution (Routing)
+        status.update(label="📡 Distributing request...", state="running")
+        # Instantiate Distributor (Freshly loaded config if needed)
+        from agents.distributor import DistributorAgent
+        distributor = DistributorAgent()
         
-        if watchdog_triggered:
-            status.update(label="🚨 SOS DETECTED!", state="error")
-            sos_res = agents["watchdog"].run(f"Emergency detected: {prompt}", stream=False)
-            response_content = sos_res.content
-            agent_type = "watchdog"
+        dist_res = distributor.run(prompt, stream=False)
+        try:
+            route_data = json.loads(dist_res.content)
+            target = route_data.get("target_agent", "SUPPORT")
+            reason = route_data.get("reason", "")
+        except:
+            # Fallback
+            target = "SUPPORT"
+            reason = "Routing parsing failed"
             
-            # Highlight SOS
-            st.error("🚨 EMERGENCY PROTOCOL ACTIVATED")
-            st.markdown(f"**SOS Plan:**\n{response_content}")
+        st.caption(f"Routed to: **{target}** ({reason})")
 
-        else:
-            # Prepare History Context (Last 3 turns to maintain context)
-            history_context = ""
-            recent_msgs = st.session_state.messages[-3:] if len(st.session_state.messages) > 3 else st.session_state.messages
-            for msg in recent_msgs:
-                role_label = "User" if msg["role"] == "user" else "Agent"
-                history_context += f"{role_label}: {msg['content']}\n"
+        # Prepare History Context
+        history_context = ""
+        recent_msgs = st.session_state.messages[-3:] if len(st.session_state.messages) > 3 else st.session_state.messages
+        for msg in recent_msgs:
+             role_label = "User" if msg["role"] == "user" else "Agent"
+             history_context += f"{role_label}: {msg['content']}\n"
 
-            # 2. Input Agent (With History for Co-reference Resolution)
+        # 2. Extract Data (Common Step)
+        if target != "WATCHDOG":
             status.update(label="📝 Structuring data...", state="running")
             input_prompt = f"""
             Conversation History:
@@ -145,54 +149,59 @@ if prompt := st.chat_input("日々の記録や、緊急の相談を入力して�
             Current User Input: {prompt}
             
             Task:
-            1. Extract client name and context from the CURRENT INPUT, utilizing the HISTORY if the current input is vague (e.g., "Yes, do that").
-            2. If the user is approving a plan, extract 'Intent: Approval'.
+            1. Extract client name and context.
+            2. If implicit, check history.
             """
             extraction_res = agents["input"].run(input_prompt, stream=False)
             formatted_data = extraction_res.content
+        else:
+            formatted_data = "{}" # Skip complex extraction for speed
+
+        # 3. Execution based on Route
+        if target == "WATCHDOG":
+            status.update(label="🚨 EMERGENCY PROTOCOL", state="error")
+            agent_type = "watchdog"
+            # Watchdog runs with raw prompt for speed
+            sos_res = agents["watchdog"].run(f"Emergency detected: {prompt}", stream=False)
+            response_content = sos_res.content
+            st.error("🚨 EMERGENCY PROTOCOL ACTIVATED")
+
+        elif target == "CLINICAL":
+            status.update(label="🩺 Clinical Advisor researching...", state="running")
+            agent_type = "clinical"
             
-            # 3. Behavioral Check
-            is_behavioral = any(k in prompt for k in ["拒否", "パニック", "自傷", "他害", "叫ぶ", "暴れる", "refusal", "panic", "meltdown"])
+            advisor_prompt = f"""
+            Conversation History:
+            {history_context}
             
-            if is_behavioral:
-                status.update(label="🩺 Clinical Advisor researching...", state="running")
-                agent_type = "clinical"
-                
-                advisor_prompt = f"""
-                Conversation History:
-                {history_context}
-                
-                Situation: {prompt}
-                Task:
-                1. Identify behavioral issue.
-                2. Research evidence-based strategies.
-                3. Check internal records (Name from: {formatted_data}).
-                4. Propose solution.
-                """
-                advisor_res = agents["clinical"].run(advisor_prompt, stream=False)
-                response_content = advisor_res.content
-                
-            else:
-                status.update(label="🧠 Support Agent analyzing...", state="running")
-                agent_type = "support"
-                
-                support_prompt = f"""
-                Conversation History:
-                {history_context}
-                
-                User Input: {prompt}
-                Extracted Context: {formatted_data}
-                
-                Task:
-                1. Situation report -> Analyze risks & propose actions.
-                2. Info request -> Execute tools.
-                3. Plan Approval -> If user says "Yes/Proceed", EXECUTE the proposed plan (e.g., create logs, send notifications) or Confirm execution.
-                4. Use Resilience/Care/Report skills.
-                
-                Constraint: PRESENT OPTIONS AND STOP. Do not ask for general feedback like "Is this okay?". Only ask clarifying questions if you cannot proceed.
-                """
-                support_res = agents["support"].run(support_prompt, stream=False)
-                response_content = support_res.content
+            Situation: {prompt}
+            Task:
+            1. Identify behavioral issue.
+            2. Research evidence-based strategies.
+            3. Check internal records (Name from: {formatted_data}).
+            4. Propose solution.
+            """
+            advisor_res = agents["clinical"].run(advisor_prompt, stream=False)
+            response_content = advisor_res.content
+
+        else: # SUPPORT
+            status.update(label="🧠 Support Agent analyzing...", state="running")
+            agent_type = "support"
+            
+            support_prompt = f"""
+            Conversation History:
+            {history_context}
+            
+            User Input: {prompt}
+            Extracted Context: {formatted_data}
+            
+            Task:
+            1. Situation report -> Analyze risks & propose actions.
+            2. Info request -> Execute tools.
+            3. Plan Approval -> Execute proposed plan.
+            """
+            support_res = agents["support"].run(support_prompt, stream=False)
+            response_content = support_res.content
         
         status.update(label="✅ Complete", state="complete", expanded=False)
 
