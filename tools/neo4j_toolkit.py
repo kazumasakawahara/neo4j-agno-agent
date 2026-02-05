@@ -29,6 +29,7 @@ class Neo4jToolkit(Toolkit):
         self.register(self.check_renewal_dates)
         self.register(self.get_client_profile)
         self.register(self.list_clients)
+        self.register(self.verify_client_identity)
         # self.register(self.register_knowledge) # Complex object handling might need wrapper
 
     def run_cypher_query(self, cypher: str) -> str:
@@ -74,8 +75,9 @@ class Neo4jToolkit(Toolkit):
             query = """
             MATCH (c:Client)
             WHERE c.name CONTAINS $name
+            
+            // 1. NgAction (Always return ALL safety risks)
             OPTIONAL MATCH (c)-[:MUST_AVOID]->(ng:NgAction)
-            WHERE $situation = '' OR ng.action CONTAINS $situation
             OPTIONAL MATCH (ng)-[:IN_CONTEXT]->(ngCon:Condition)
             WITH c, collect(DISTINCT {
                 action: ng.action,
@@ -83,9 +85,9 @@ class Neo4jToolkit(Toolkit):
                 riskLevel: ng.riskLevel,
                 context: ngCon.name
             }) AS ngActions
-
+            
+            // 2. CarePreference (Always return ALL preferences)
             OPTIONAL MATCH (c)-[:REQUIRES]->(cp:CarePreference)
-            WHERE $situation = '' OR cp.category CONTAINS $situation
             OPTIONAL MATCH (cp)-[:ADDRESSES]->(cpCon:Condition)
             WITH c, ngActions, collect(DISTINCT {
                 category: cp.category,
@@ -189,10 +191,25 @@ class Neo4jToolkit(Toolkit):
             JSON object of the full profile.
         """
         try:
-            # Simplified query for brevity, similar to server.py logic
+            # Robust Client Resolution Logic
+            clean_name = client_name.strip()
+            for suffix in ["さん", "くん", "ちゃん", "様", "氏", "San", "-san"]:
+                if clean_name.endswith(suffix):
+                    clean_name = clean_name[:-len(suffix)].strip()
+                    break
+
             query = """
             MATCH (c:Client)
-            WHERE c.name CONTAINS $name
+            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+            WHERE 
+               (i.name IN [$raw, $clean]) OR
+               (c.name IN [$raw, $clean]) OR 
+               (c.kana IN [$raw, $clean]) OR 
+               ANY(alias IN c.aliases WHERE alias IN [$raw, $clean]) OR
+               (c.name CONTAINS $clean OR $clean CONTAINS c.name) OR
+               (c.kana CONTAINS $clean OR $clean CONTAINS c.kana) OR
+               ANY(alias IN c.aliases WHERE alias CONTAINS $clean OR $clean CONTAINS alias)
+
             OPTIONAL MATCH (c)-[:HAS_HISTORY]->(h:LifeHistory)
             OPTIONAL MATCH (c)-[:HAS_WISH]->(w:Wish)
             OPTIONAL MATCH (c)-[:HAS_CONDITION]->(con:Condition)
@@ -206,7 +223,7 @@ class Neo4jToolkit(Toolkit):
             OPTIONAL MATCH (c)-[:TREATED_AT]->(hosp:Hospital)
             
             RETURN 
-                c.name AS name,
+                COALESCE(i.name, c.name) AS name,
                 c.dob AS dob,
                 collect(DISTINCT h) AS history,
                 collect(DISTINCT w) AS wishes,
@@ -220,7 +237,7 @@ class Neo4jToolkit(Toolkit):
             """
             
             with self.driver.session() as session:
-                result = session.run(query, name=client_name)
+                result = session.run(query, raw=client_name, clean=clean_name)
                 data = [record.data() for record in result]
                 if not data or not data[0].get('name'):
                     return f"Client '{client_name}' not found."
@@ -243,3 +260,67 @@ class Neo4jToolkit(Toolkit):
                 return json.dumps(data, ensure_ascii=False, indent=2, default=str)
         except Exception as e:
             return f"Error listing clients: {e}"
+
+    def verify_client_identity(self, name_input: str) -> str:
+        """
+        Check if a client exists and return the official name and match type.
+        Use this BEFORE accessing sensitive data if the user input might be an alias or abbreviation.
+        
+        Args:
+            name_input: The name provided by the user (e.g., 'Mari-chan').
+            
+        Returns:
+            JSON object: {"status": "found"|"not_found", "official_name": "...", "match_type": "exact"|"alias"|"fuzzy"}
+        """
+        try:
+            clean_name = name_input.strip()
+            # Basic validation
+            if not clean_name:
+                return json.dumps({"status": "error", "message": "Empty input"})
+                
+            # Use the robust query logic but purely for identification
+            query = """
+            // 1. Strict Name Match
+            MATCH (c:Client)
+            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+            WHERE (i.name = $name) OR (c.name = $name)
+            RETURN COALESCE(i.name, c.name) as name, 'exact' as type
+            
+            UNION
+            
+            // 2. Alias/Kana Match (High Confidence but different string)
+            MATCH (c:Client)
+            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+            WHERE (c.kana = $name) OR ($name IN c.aliases)
+            RETURN COALESCE(i.name, c.name) as name, 'alias' as type
+            
+            UNION
+
+            // 3. Fuzzy/Partial Match (Low Confidence)
+            MATCH (c:Client)
+            OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+            WHERE 
+               (c.name CONTAINS $name) OR 
+               (c.kana CONTAINS $name) OR
+               ANY(alias IN c.aliases WHERE alias CONTAINS $name)
+            RETURN COALESCE(i.name, c.name) as name, 'fuzzy' as type
+            LIMIT 1
+            """
+            
+            with self.driver.session() as session:
+                result = session.run(query, name=clean_name)
+                data = [record.data() for record in result]
+                
+                if not data:
+                    return json.dumps({"status": "not_found", "input": name_input})
+                
+                record = data[0]
+                return json.dumps({
+                    "status": "found",
+                    "official_name": record['name'],
+                    "match_type": record['type'],
+                    "input": name_input
+                }, ensure_ascii=False)
+                
+        except Exception as e:
+            return json.dumps({"status": "error", "message": str(e)})

@@ -1,13 +1,9 @@
 import streamlit as st
-import json
 import time
 from dotenv import load_dotenv
 
-# Import Agents
-from agents.input_agent import InputAgent
-from agents.support_agent import SupportAgent
-from agents.watchdog import EmergencyWatchdog
-from agents.clinical_advisor import ClinicalAdvisorAgent
+# Import the new Unified Agent
+from agents.unified_support_agent import UnifiedSupportAgent
 
 # Load Environment Variables
 load_dotenv()
@@ -15,7 +11,7 @@ load_dotenv()
 # Page Config handled by app.py
 # st.set_page_config(...) commented out for unified navigation
 
-# Custom CSS for Premium Look
+# Custom CSS for a more professional look
 st.markdown("""
 <style>
     .stApp {
@@ -34,16 +30,12 @@ st.markdown("""
         border-left: 5px solid #6c757d;
     }
     .chat-message.bot {
-        background-color: #e3f2fd;
-        border-left: 5px solid #2196f3;
+        background-color: #eef5ff; /* A softer blue */
+        border-left: 5px solid #007bff;
     }
     .chat-message.sos {
         background-color: #ffebee;
         border-left: 5px solid #f44336;
-    }
-    .chat-message.clinical {
-        background-color: #fff8e1;
-        border-left: 5px solid #ffc107;
     }
     .agent-avatar {
         width: 40px; height: 40px; border-radius: 50%; margin-right: 1rem;
@@ -56,28 +48,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize Agents (Cached)
+# Initialize The Unified Agent (Cached)
 @st.cache_resource
-def load_agents():
-    return {
-        "input": InputAgent(),
-        "support": SupportAgent(),
-        "watchdog": EmergencyWatchdog(),
-        "clinical": ClinicalAdvisorAgent()
-    }
+def load_agent():
+    return UnifiedSupportAgent()
 
-agents = load_agents()
+agent = load_agent()
 
 # Sidebar
 with st.sidebar:
     st.image("https://img.icons8.com/color/96/family.png", width=80)
     st.title("Support Team")
     st.markdown("---")
-    st.markdown("### 🟢 Active Agents")
-    st.success("📝 Input Agent")
-    st.success("🧠 Support Agent")
-    st.error("🐕 Emergency Watchdog")
-    st.warning("🩺 Clinical Advisor")
+    st.markdown("### 🟢 Active Agent")
+    st.success("🤖 Unified Support Agent")
     
     st.markdown("---")
     if st.button("Clear History"):
@@ -85,150 +69,55 @@ with st.sidebar:
         st.rerun()
 
 # Main Header
-st.title("🛡️ Post-Parent Support Agent Team")
-st.caption("AI-Powered Digital Guardianship System")
+st.title("🛡️ Post-Parent Support Agent")
+st.caption("Unified AI for Digital Guardianship")
 
-# Chat History
+# Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+# Display Chat History
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
         if "data" in msg:
-            with st.expander("🔍 Reasoning & Data"):
+            with st.expander("🔍 Agent's Reasoning Data"):
                 st.json(msg["data"])
 
-# User Input
+# Handle User Input
 if prompt := st.chat_input("日々の記録や、緊急の相談を入力してください..."):
-    # Add User Message
+    # Add user message to history
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Response Container
-    response_placeholder = st.empty()
-    
-    # Agent Processing Flow
-    with st.status("🔄 Team is working...", expanded=True) as status:
-        response_content = None
-        agent_type = None
+    # Agent's turn to respond
+    with st.chat_message("assistant"):
+        response_placeholder = st.empty()
         
-        # 1. Distribution (Routing)
-        status.update(label="📡 Distributing request...", state="running")
-        # Instantiate Distributor (Freshly loaded config if needed)
-        from agents.distributor import DistributorAgent
-        distributor = DistributorAgent()
-        
-        dist_res = distributor.run(prompt, stream=False)
-        try:
-            route_data = json.loads(dist_res.content)
-            target = route_data.get("target_agent", "SUPPORT")
-            reason = route_data.get("reason", "")
-        except:
-            # Fallback
-            target = "SUPPORT"
-            reason = "Routing parsing failed"
+        with st.status("🤖 Agent is thinking...", expanded=True) as status:
+            # Prepare conversation history for the agent
+            # The new prompt is designed to handle history, so we can pass it
+            history_for_agent = "\n".join(
+                [f"{m['role']}: {m['content']}" for m in st.session_state.messages]
+            )
             
-        st.caption(f"Routed to: **{target}** ({reason})")
+            # Run the unified agent
+            status.update(label="Analyzing request and context...", state="running")
+            response = agent.run(history_for_agent, stream=False)
+            status.update(label="✅ Complete", state="complete", expanded=False)
 
-        # Prepare History Context
-        history_context = ""
-        recent_msgs = st.session_state.messages[-3:] if len(st.session_state.messages) > 3 else st.session_state.messages
-        for msg in recent_msgs:
-             role_label = "User" if msg["role"] == "user" else "Agent"
-             history_context += f"{role_label}: {msg['content']}\n"
+        # Display the response content
+        response_content = response.content
+        response_placeholder.markdown(response_content)
 
-        # 2. Extract Data (Common Step)
-        if target != "WATCHDOG":
-            status.update(label="📝 Structuring data...", state="running")
-            input_prompt = f"""
-            Conversation History:
-            {history_context}
-            
-            Current User Input: {prompt}
-            
-            Task:
-            1. Extract client name and context.
-            2. If implicit, check history.
-            """
-            extraction_res = agents["input"].run(input_prompt, stream=False)
-            formatted_data = extraction_res.content
-        else:
-            formatted_data = "{}" # Skip complex extraction for speed
+    # Add agent's response to history
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": response_content,
+        "data": {
+            "agent": "UnifiedSupportAgent",
+            "tools_used": response.run_details,
+        }
+    })
 
-        # 3. Execution based on Route
-        if target == "WATCHDOG":
-            status.update(label="🚨 EMERGENCY PROTOCOL", state="error")
-            agent_type = "watchdog"
-            # Watchdog runs with raw prompt for speed
-            sos_res = agents["watchdog"].run(f"Emergency detected: {prompt}", stream=False)
-            response_content = sos_res.content
-            st.error("🚨 EMERGENCY PROTOCOL ACTIVATED")
-
-        elif target == "CLINICAL":
-            status.update(label="🩺 Clinical Advisor researching...", state="running")
-            agent_type = "clinical"
-            
-            advisor_prompt = f"""
-            Conversation History:
-            {history_context}
-            
-            Situation: {prompt}
-            Task:
-            1. Identify behavioral issue.
-            2. Research evidence-based strategies.
-            3. Check internal records (Name from: {formatted_data}).
-            4. Propose solution.
-            """
-            advisor_res = agents["clinical"].run(advisor_prompt, stream=False)
-            response_content = advisor_res.content
-
-        else: # SUPPORT
-            status.update(label="🧠 Support Agent analyzing...", state="running")
-            agent_type = "support"
-            
-            support_prompt = f"""
-            Conversation History:
-            {history_context}
-            
-            User Input: {prompt}
-            Extracted Context: {formatted_data}
-            
-            Task:
-            1. Situation report -> Analyze risks & propose actions.
-            2. Info request -> Execute tools.
-            3. Plan Approval -> Execute proposed plan.
-            """
-            support_res = agents["support"].run(support_prompt, stream=False)
-            response_content = support_res.content
-        
-        status.update(label="✅ Complete", state="complete", expanded=False)
-
-    # Display Response Outside Status Block
-    if response_content:
-        if agent_type == "watchdog":
-             # Already displayed inside for urgency, but ensure session state
-             st.session_state.messages.append({
-                "role": "assistant",
-                "content": f"🚨 **SOS ACTIVATED**\n\n{response_content}",
-                "data": {"agent": "EmergencyWatchdog", "status": "Critical"}
-            })
-        elif agent_type == "clinical":
-            st.warning("🩺 Clinical Advice")
-            st.markdown(response_content)
-            
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": f"🩺 **Clinical Advice**\n\n{response_content}",
-                "data": {"agent": "ClinicalAdvisor", "context": formatted_data}
-            })
-        elif agent_type == "support":
-            st.success("🧠 Support Plan")
-            st.markdown(response_content)
-            
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": f"🧠 **Support Plan**\n\n{response_content}",
-                "data": {"agent": "SupportAgent", "context": formatted_data}
-            })
