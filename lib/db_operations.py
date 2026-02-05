@@ -236,11 +236,13 @@ def register_to_database(data: dict, user_name: str = "system") -> dict:
     run_query("""
         MERGE (c:Client {name: $name})
         SET c.dob = CASE WHEN $dob IS NOT NULL THEN date($dob) ELSE c.dob END,
-            c.bloodType = COALESCE($blood, c.bloodType)
+            c.bloodType = COALESCE($blood, c.bloodType),
+            c.kana = COALESCE($kana, c.kana)
     """, {
         "name": client_name,
         "dob": data['client'].get('dob'),
-        "blood": data['client'].get('bloodType')
+        "blood": data['client'].get('bloodType'),
+        "kana": data['client'].get('kana')
     })
 
     # 監査ログ: クライアント登録/更新
@@ -553,14 +555,32 @@ def resolve_client(identifier: str) -> Optional[dict]:
         if result:
             return result[0]
 
-    # 氏名で検索（後方互換性）
+    # 氏名またはふりがなで検索（完全一致）
     result = run_query("""
         MATCH (c:Client)
         OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
-        WHERE i.name = $name OR c.name = $name
+        WHERE i.name = $name OR c.name = $name OR c.kana = $name
         RETURN c.clientId as clientId,
                c.displayCode as displayCode,
                c.bloodType as bloodType,
+               c.kana as kana,
+               COALESCE(i.name, c.name) as name,
+               COALESCE(i.dob, c.dob) as dob
+        LIMIT 1
+    """, {"name": identifier})
+
+    if result:
+        return result[0]
+
+    # 部分一致検索（フォールバック）
+    result = run_query("""
+        MATCH (c:Client)
+        OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
+        WHERE c.name CONTAINS $name OR c.kana CONTAINS $name
+        RETURN c.clientId as clientId,
+               c.displayCode as displayCode,
+               c.bloodType as bloodType,
+               c.kana as kana,
                COALESCE(i.name, c.name) as name,
                COALESCE(i.dob, c.dob) as dob
         LIMIT 1
@@ -578,7 +598,7 @@ def get_clients_list_extended(include_pii: bool = True) -> list:
 
     Returns:
         [
-            {"clientId": "c-xxx", "displayCode": "A-001", "name": "山田健太"},
+            {"clientId": "c-xxx", "displayCode": "A-001", "name": "山田健太", "kana": "やまだけんた"},
             ...
         ]
     """
@@ -588,6 +608,7 @@ def get_clients_list_extended(include_pii: bool = True) -> list:
             OPTIONAL MATCH (c)-[:HAS_IDENTITY]->(i:Identity)
             RETURN c.clientId as clientId,
                    c.displayCode as displayCode,
+                   c.kana as kana,
                    COALESCE(i.name, c.name) as name
             ORDER BY COALESCE(c.displayCode, c.name)
         """)

@@ -234,6 +234,12 @@ def render_edit_step():
                 value=data.get('client', {}).get('name', ''),
                 key="client_name"
             )
+            data['client']['kana'] = st.text_input(
+                "ふりがな", 
+                value=data.get('client', {}).get('kana', ''),
+                placeholder="例: やまだけんた",
+                key="client_kana"
+            )
         with col2:
             dob_value = safe_date_parse(data.get('client', {}).get('dob'))
             dob = st.date_input(
