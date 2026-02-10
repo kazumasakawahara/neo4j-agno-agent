@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>親亡き後支援データベース - ご家族向けガイド</title>
+<style>
+  :root {
+    --warm: #5D4037;
+    --warm-light: #EFEBE9;
+    --sky: #0277BD;
+    --sky-light: #E1F5FE;
+    --leaf: #2E7D32;
+    --leaf-light: #E8F5E9;
+    --sun: #F57F17;
+    --sun-light: #FFFDE7;
+    --rose: #AD1457;
+    --rose-light: #FCE4EC;
+    --heart: #C62828;
+    --calm: #4527A0;
+    --calm-light: #EDE7F6;
+    --bg: #FAFAF8;
+    --card: #FFFFFF;
+    --text: #3E2723;
+    --text-sub: #795548;
+    --shadow: 0 3px 16px rgba(62,39,35,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Hiragino Maru Gothic ProN', 'Rounded Mplus 1c', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 2;
+    font-size: 16px;
+  }
+
+  /* ===== Hero ===== */
+  .hero {
+    background: linear-gradient(160deg, #E8F5E9 0%, #E1F5FE 40%, #EDE7F6 100%);
+    padding: 64px 24px 56px;
+    text-align: center;
+    border-bottom: 3px solid #C8E6C9;
+  }
+  .hero-icon { font-size: 4rem; margin-bottom: 8px; }
+  .hero h1 {
+    font-size: 1.75rem; font-weight: 800; color: var(--warm);
+    letter-spacing: 0.03em;
+  }
+  .hero .lead {
+    font-size: 1.05rem; color: var(--text-sub);
+    margin-top: 12px; max-width: 640px; margin-left: auto; margin-right: auto;
+  }
+
+  .container { max-width: 880px; margin: 0 auto; padding: 0 20px; }
+
+  /* ===== Section ===== */
+  .section { padding: 48px 0 24px; }
+  .section-head {
+    text-align: center; margin-bottom: 32px;
+  }
+  .section-icon { font-size: 2.4rem; }
+  .section-title {
+    font-size: 1.4rem; font-weight: 800; color: var(--warm);
+    margin-top: 4px;
+  }
+  .section-sub {
+    font-size: 0.92rem; color: var(--text-sub); margin-top: 4px;
+  }
+
+  /* ===== Message Box ===== */
+  .message-box {
+    background: var(--sun-light);
+    border: 2px solid #FFE082;
+    border-radius: 16px;
+    padding: 28px 32px;
+    font-size: 1.05rem;
+    line-height: 2.1;
+    color: var(--text);
+    position: relative;
+    margin: 24px 0;
+  }
+  .message-box .accent {
+    color: var(--heart);
+    font-weight: 700;
+  }
+
+  /* ===== Worry Cards ===== */
+  .worry-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .worry-card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 24px 20px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    border-top: 4px solid var(--rose);
+  }
+  .worry-icon { font-size: 2.2rem; margin-bottom: 8px; }
+  .worry-card p { font-size: 0.92rem; color: var(--text-sub); }
+
+  /* ===== Answer Card ===== */
+  .answer-box {
+    background: var(--leaf-light);
+    border: 2px solid #A5D6A7;
+    border-radius: 16px;
+    padding: 28px 32px;
+    text-align: center;
+    margin: 24px 0;
+  }
+  .answer-box .big { font-size: 1.3rem; font-weight: 800; color: var(--leaf); }
+  .answer-box p { font-size: 0.95rem; color: var(--text-sub); margin-top: 8px; }
+
+  /* ===== Step Flow ===== */
+  .steps { display: flex; flex-direction: column; gap: 0; margin: 24px 0; }
+  .step {
+    display: flex; align-items: flex-start; gap: 20px;
+    padding: 24px 0;
+  }
+  .step-left {
+    flex-shrink: 0;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .step-circle {
+    width: 64px; height: 64px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.8rem; color: white; font-weight: 800;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .step-line {
+    width: 4px; height: 40px; border-radius: 2px; margin-top: 4px;
+  }
+  .step.s1 .step-circle { background: var(--sky); }
+  .step.s1 .step-line { background: linear-gradient(var(--sky), var(--sun)); }
+  .step.s2 .step-circle { background: var(--sun); }
+  .step.s2 .step-line { background: linear-gradient(var(--sun), var(--calm)); }
+  .step.s3 .step-circle { background: var(--calm); }
+  .step-body {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+    flex: 1;
+  }
+  .step-body h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; }
+  .step-body .who {
+    display: inline-block;
+    padding: 2px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .step.s1 .who { background: var(--sky-light); color: var(--sky); }
+  .step.s2 .who { background: var(--sun-light); color: var(--sun); }
+  .step.s3 .who { background: var(--calm-light); color: var(--calm); }
+  .step-body p { font-size: 0.92rem; color: var(--text-sub); }
+  .step-body .example {
+    background: #F5F5F5;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: var(--text);
+  }
+  .step-body .example strong { color: var(--warm); }
+
+  /* ===== Data Illustration ===== */
+  .data-ring {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: 16px; margin: 24px 0;
+  }
+  .data-item {
+    width: 140px;
+    background: var(--card);
+    border-radius: 16px;
+    padding: 20px 12px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s;
+  }
+  .data-item:hover { transform: translateY(-4px); }
+  .data-icon { font-size: 2rem; margin-bottom: 6px; }
+  .data-item h4 { font-size: 0.85rem; font-weight: 700; margin-bottom: 4px; }
+  .data-item p { font-size: 0.72rem; color: var(--text-sub); line-height: 1.5; }
+
+  /* ===== Emergency Flow ===== */
+  .sos-flow {
+    background: var(--rose-light);
+    border: 2px solid #F48FB1;
+    border-radius: 20px;
+    padding: 32px;
+    margin: 24px 0;
+  }
+  .sos-title {
+    text-align: center;
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--heart);
+    margin-bottom: 20px;
+  }
+  .sos-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .sos-box {
+    padding: 14px 18px;
+    border-radius: 14px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 0.9rem;
+    min-width: 140px;
+  }
+  .sos-box.trigger { background: white; border: 2px solid var(--heart); color: var(--heart); }
+  .sos-box.system { background: #F3E5F5; border: 2px solid #CE93D8; color: #6A1B9A; }
+  .sos-box.action { background: white; border: 2px solid var(--leaf); color: var(--leaf); }
+  .sos-arrow { font-size: 1.4rem; color: var(--rose); }
+  .sos-detail {
+    margin-top: 20px;
+    background: white;
+    border-radius: 12px;
+    padding: 16px 20px;
+    font-size: 0.88rem;
+    color: var(--text-sub);
+    text-align: center;
+  }
+
+  /* ===== Scene Cards ===== */
+  .scene-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .scene-card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+  .scene-card .scene-icon { font-size: 2rem; margin-bottom: 8px; }
+  .scene-card h4 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; color: var(--warm); }
+  .scene-card .q {
+    background: var(--sky-light);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+    color: var(--sky);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+  .scene-card .a {
+    font-size: 0.85rem;
+    color: var(--text-sub);
+    padding-left: 8px;
+    border-left: 3px solid #A5D6A7;
+  }
+
+  /* ===== Safety ===== */
+  .safety-box {
+    background: var(--calm-light);
+    border: 2px solid #B39DDB;
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin: 24px 0;
+  }
+  .safety-box h3 {
+    font-size: 1.1rem; font-weight: 700; color: var(--calm);
+    margin-bottom: 12px; text-align: center;
+  }
+  .safety-list {
+    list-style: none; padding: 0;
+  }
+  .safety-list li {
+    padding: 8px 0;
+    font-size: 0.92rem;
+    display: flex; align-items: flex-start; gap: 10px;
+    border-bottom: 1px solid #D1C4E9;
+  }
+  .safety-list li:last-child { border-bottom: none; }
+  .safety-list .check { color: var(--leaf); font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+
+  /* ===== CTA ===== */
+  .cta {
+    background: linear-gradient(160deg, #E8F5E9 0%, #E1F5FE 40%, #EDE7F6 100%);
+    border-radius: 20px;
+    padding: 40px 32px;
+    text-align: center;
+    margin: 40px 0;
+  }
+  .cta .big-icon { font-size: 3rem; }
+  .cta h3 { font-size: 1.2rem; font-weight: 800; color: var(--warm); margin: 8px 0; }
+  .cta p { font-size: 0.95rem; color: var(--text-sub); max-width: 560px; margin: 0 auto; }
+
+  /* ===== Footer ===== */
+  .footer {
+    text-align: center; padding: 32px 0; margin-top: 32px;
+    border-top: 2px solid #E0E0E0;
+    color: var(--text-sub); font-size: 0.8rem;
+  }
+
+  @media (max-width: 640px) {
+    .hero h1 { font-size: 1.35rem; }
+    .step { flex-direction: column; align-items: center; text-align: center; }
+    .step-left { flex-direction: row; gap: 0; }
+    .step-line { width: 0; height: 0; }
+    .sos-steps { flex-direction: column; }
+    .sos-arrow { transform: rotate(90deg); }
+    .data-item { width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Hero ===== -->
+<div class="hero">
+  <div class="hero-icon">🏠</div>
+  <h1>「親亡き後」に備える<br>安心のしくみ</h1>
+  <div class="lead">
+    お子さんのことを一番わかっているのは、親御さんです。<br>
+    その大切な知識を、未来の支援者へつなぐシステムです。
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ===== こんな不安ありませんか ===== -->
+<div class="section">
+  <div class="section-head">
+    <div class="section-icon">💭</div>
+    <div class="section-title">こんな不安、ありませんか？</div>
+  </div>
+
+  <div class="worry-grid">
+    <div class="worry-card">
+      <div class="worry-icon">😰</div>
+      <p>自分が倒れたら<br>この子は<strong>どうなるの？</strong></p>
+    </div>
+    <div class="worry-card">
+      <div class="worry-icon">📋</div>
+      <p>支援者が変わるたびに<br><strong>一から説明</strong>するの？</p>
+    </div>
+    <div class="worry-card">
+      <div class="worry-icon">🚨</div>
+      <p>緊急時に<br><strong>誰が何をすればいい</strong>の？</p>
+    </div>
+    <div class="worry-card">
+      <div class="worry-icon">💔</div>
+      <p>私の知っている<br><strong>「この子のコツ」</strong>が消えてしまう</p>
+    </div>
+  </div>
+
+  <div class="answer-box">
+    <div class="big">このシステムが、その不安に応えます。</div>
+    <p>親御さんの「頭の中にあるマニュアル」を記録し、<br>いつでも・誰でも・すぐに見られる形で残します。</p>
+  </div>
+</div>
+
+<!-- ===== このシステムでできること ===== -->
+<div class="section">
+  <div class="section-head">
+    <div class="section-icon">✨</div>
+    <div class="section-title">どんな情報を残せるの？</div>
+    <div class="section-sub">お子さんのことを丸ごと記録できます</div>
+  </div>
+
+  <div class="data-ring">
+    <div class="data-item">
+      <div class="data-icon">👤</div>
+      <h4>基本情報</h4>
+      <p>名前・生年月日<br>血液型・診断名</p>
+    </div>
+    <div class="data-item" style="border-top: 3px solid #EF5350;">
+      <div class="data-icon">🚫</div>
+      <h4>してはいけない<br>こと</h4>
+      <p>絶対にダメなこと<br>パニックの原因</p>
+    </div>
+    <div class="data-item" style="border-top: 3px solid #66BB6A;">
+      <div class="data-icon">💚</div>
+      <h4>こうすると<br>安心すること</h4>
+      <p>落ち着く方法<br>好きなこと</p>
+    </div>
+    <div class="data-item" style="border-top: 3px solid #42A5F5;">
+      <div class="data-icon">📞</div>
+      <h4>緊急連絡先</h4>
+      <p>キーパーソン<br>優先順位つき</p>
+    </div>
+    <div class="data-item" style="border-top: 3px solid #AB47BC;">
+      <div class="data-icon">🏥</div>
+      <h4>かかりつけ医</h4>
+      <p>病院名・担当医<br>診療科</p>
+    </div>
+    <div class="data-item" style="border-top: 3px solid #FF9800;">
+      <div class="data-icon">📜</div>
+      <h4>手帳・受給者証</h4>
+      <p>種類・等級<br>更新時期のお知らせ</p>
+    </div>
+    <div class="data-item" style="border-top: 3px solid #26C6DA;">
+      <div class="data-icon">⚖️</div>
+      <h4>後見人</h4>
+      <p>成年後見人<br>連絡先</p>
+    </div>
+    <div class="data-item" style="border-top: 3px solid #8D6E63;">
+      <div class="data-icon">📖</div>
+      <h4>生い立ちと願い</h4>
+      <p>生育歴<br>将来の願い</p>
+    </div>
+  </div>
+
+  <div class="message-box">
+    特に大切なのは<span class="accent">「してはいけないこと」</span>の記録です。<br>
+    たとえば「大きな音でパニックになる」「特定の食べ物はアレルギーがある」など、<br>
+    <span class="accent">命に関わる情報</span>を最優先で記録・表示します。
+  </div>
+</div>
+
+<!-- ===== 使い方 ===== -->
+<div class="section">
+  <div class="section-head">
+    <div class="section-icon">📝</div>
+    <div class="section-title">どうやって使うの？</div>
+    <div class="section-sub">3つのステップで、かんたんに使えます</div>
+  </div>
+
+  <div class="steps">
+    <!-- Step 1 -->
+    <div class="step s1">
+      <div class="step-left">
+        <div class="step-circle">1</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <span class="who">親御さん・相談員</span>
+        <h3>お話を聞かせてください</h3>
+        <p>
+          パソコンやスマホの画面に、お子さんのことを<strong>自由に書いて</strong>ください。<br>
+          箇条書きでも、話し言葉でも大丈夫。ワード文書のアップロードもできます。
+        </p>
+        <div class="example">
+          <strong>入力例：</strong><br>
+          「健太は大きな音が苦手です。パニックになったら静かな部屋に連れて行って、
+          背中をゆっくりさすると5分くらいで落ち着きます。」
+        </div>
+        <p style="margin-top:12px;">
+          ⬇️ <strong>AIが自動で整理します</strong>（分類・構造化）<br>
+          ⬇️ 内容を画面で確認 → 修正があれば直せます<br>
+          ⬇️ 「登録」ボタンで保存完了！
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step s2">
+      <div class="step-left">
+        <div class="step-circle">2</div>
+        <div class="step-line"></div>
+      </div>
+      <div class="step-body">
+        <span class="who">支援者（ヘルパー・職員）</span>
+        <h3>日々の気づきをかんたん記録</h3>
+        <p>
+          支援者がスマホから<strong>30秒で</strong>記録できます。<br>
+          「普通の日」は記録不要。<strong>良かったこと・気になったこと</strong>だけ残します。
+        </p>
+        <div class="example">
+          <strong>例：</strong> 「今日は新しいお菓子をとても喜んでいた ☺️」<br>
+          <strong>例：</strong> 「帰宅後に少し落ち着かない様子があった ⚠️」
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step s3">
+      <div class="step-left">
+        <div class="step-circle">3</div>
+      </div>
+      <div class="step-body">
+        <span class="who">相談支援専門員・管理者</span>
+        <h3>AIに質問して、すぐに答えが見つかる</h3>
+        <p>
+          記録した情報に、<strong>ふつうの言葉で質問</strong>できます。<br>
+          分厚いファイルをめくる必要はもうありません。
+        </p>
+        <div class="example">
+          <strong>質問例：</strong><br>
+          「健太さんがパニックを起こしたらどうすればいい？」<br>
+          「来月更新が必要な手帳はある？」<br>
+          「健太さんの緊急連絡先を教えて」
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 緊急時の流れ ===== -->
+<div class="section">
+  <div class="section-head">
+    <div class="section-icon">🆘</div>
+    <div class="section-title">もしもの時はどうなるの？</div>
+    <div class="section-sub">SOSボタンひとつで、支援チームに情報が届きます</div>
+  </div>
+
+  <div class="sos-flow">
+    <div class="sos-title">🚨 緊急時の流れ</div>
+    <div class="sos-steps">
+      <div class="sos-box trigger">
+        🆘<br>SOSボタンを押す
+      </div>
+      <div class="sos-arrow">➜</div>
+      <div class="sos-box system">
+        🔍<br>必要な情報を<br>自動で集める
+      </div>
+      <div class="sos-arrow">➜</div>
+      <div class="sos-box action">
+        📲<br>支援チームの<br>LINEに通知
+      </div>
+    </div>
+    <div class="sos-detail">
+      通知には<strong>「してはいけないこと」「緊急連絡先」「かかりつけ医」</strong>が含まれます。<br>
+      初めて対応する支援者でも、安全に対応できます。
+    </div>
+  </div>
+</div>
+
+<!-- ===== こんな場面で役立ちます ===== -->
+<div class="section">
+  <div class="section-head">
+    <div class="section-icon">💡</div>
+    <div class="section-title">こんな場面で役立ちます</div>
+  </div>
+
+  <div class="scene-grid">
+    <div class="scene-card">
+      <div class="scene-icon">🤕</div>
+      <h4>親御さんが入院した時</h4>
+      <div class="q">💬 「この子の食事の注意点を教えて」</div>
+      <div class="a">→ アレルギー情報、好き嫌い、食事中の注意点をすぐに確認できます</div>
+    </div>
+    <div class="scene-card">
+      <div class="scene-icon">👋</div>
+      <h4>新しいヘルパーさんが来た時</h4>
+      <div class="q">💬 「この方の特徴と注意点をまとめて」</div>
+      <div class="a">→ 禁忌事項・好きなこと・関わり方のコツが一覧で表示されます</div>
+    </div>
+    <div class="scene-card">
+      <div class="scene-icon">📅</div>
+      <h4>手帳の更新時期</h4>
+      <div class="q">💬 「更新が近い手帳はある？」</div>
+      <div class="a">→ 更新期限の3ヶ月前から自動でお知らせします</div>
+    </div>
+    <div class="scene-card">
+      <div class="scene-icon">🏥</div>
+      <h4>緊急搬送された時</h4>
+      <div class="q">💬 「緊急時に必要な情報を全部見せて」</div>
+      <div class="a">→ 血液型、服薬情報、アレルギー、緊急連絡先がまとめて表示されます</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 安全について ===== -->
+<div class="section">
+  <div class="section-head">
+    <div class="section-icon">🔒</div>
+    <div class="section-title">情報の安全について</div>
+  </div>
+
+  <div class="safety-box">
+    <h3>大切な情報を守る3つの約束</h3>
+    <ul class="safety-list">
+      <li>
+        <span class="check">✅</span>
+        <span>データはお手元のパソコン内に保存されます。インターネット上には公開されません。</span>
+      </li>
+      <li>
+        <span class="check">✅</span>
+        <span>AIは入力された内容を整理するだけで、勝手に情報を作ったり推測したりしません。</span>
+      </li>
+      <li>
+        <span class="check">✅</span>
+        <span>「誰が」「いつ」「何を」登録・変更したか、すべて記録が残ります（監査ログ）。</span>
+      </li>
+    </ul>
+  </div>
+</div>
+
+<!-- ===== CTA ===== -->
+<div class="cta">
+  <div class="big-icon">🌱</div>
+  <h3>お子さんの未来を、一緒に守りましょう</h3>
+  <p>
+    このシステムは、親御さんの愛情と知恵を<br>
+    「未来の支援者」へつなぐ架け橋です。<br><br>
+    まずは、お子さんのことを自由に語ることから始めてみませんか？
+  </p>
+</div>
+
+</div><!-- /container -->
+
+<div class="footer">
+  親亡き後支援データベース &middot; ご家族向けガイド &middot; 2026年2月
+</div>
+
+</body>
+</html>

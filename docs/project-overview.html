@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>親亡き後支援データベース - プロジェクト全体像</title>
+<style>
+  :root {
+    --blue: #1565C0;
+    --blue-light: #E3F2FD;
+    --orange: #E65100;
+    --orange-light: #FFF3E0;
+    --purple: #6A1B9A;
+    --purple-light: #F3E5F5;
+    --green: #2E7D32;
+    --green-light: #E8F5E9;
+    --red: #C62828;
+    --red-light: #FFEBEE;
+    --gray: #455A64;
+    --gray-light: #ECEFF1;
+    --bg: #F5F7FA;
+    --card: #FFFFFF;
+    --text: #263238;
+    --text-sub: #607D8B;
+    --border: #CFD8DC;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+    --shadow-hover: 0 6px 24px rgba(0,0,0,0.14);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+  }
+
+  /* ===== Hero ===== */
+  .hero {
+    background: linear-gradient(135deg, #1A237E 0%, #4A148C 60%, #880E4F 100%);
+    color: white;
+    padding: 56px 24px 48px;
+    text-align: center;
+  }
+  .hero h1 { font-size: 2rem; font-weight: 800; letter-spacing: 0.02em; }
+  .hero .subtitle { font-size: 1.05rem; opacity: 0.85; margin-top: 8px; }
+  .hero .version { font-size: 0.8rem; opacity: 0.6; margin-top: 12px; }
+
+  /* ===== Container ===== */
+  .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+
+  /* ===== Section ===== */
+  .section { padding: 48px 0 32px; }
+  .section-title {
+    font-size: 1.4rem;
+    font-weight: 700;
+    margin-bottom: 24px;
+    padding-left: 16px;
+    border-left: 4px solid var(--purple);
+    color: var(--text);
+  }
+
+  /* ===== Values ===== */
+  .values-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+  }
+  .value-card {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .value-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-hover); }
+  .value-icon { font-size: 2rem; margin-bottom: 8px; }
+  .value-name { font-weight: 700; font-size: 1.05rem; margin-bottom: 4px; }
+  .value-en { font-size: 0.75rem; color: var(--text-sub); margin-bottom: 6px; }
+  .value-desc { font-size: 0.82rem; color: var(--text-sub); }
+
+  /* ===== 3-Layer Architecture ===== */
+  .layers { display: flex; flex-direction: column; gap: 20px; }
+  .layer-card {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 28px 24px;
+    box-shadow: var(--shadow);
+    border-left: 6px solid;
+    display: grid;
+    grid-template-columns: 80px 1fr 220px;
+    gap: 20px;
+    align-items: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .layer-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+  .layer-card.l1 { border-color: var(--blue); }
+  .layer-card.l2 { border-color: var(--orange); }
+  .layer-card.l3 { border-color: var(--purple); }
+  .layer-num {
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; font-weight: 800; color: white;
+  }
+  .l1 .layer-num { background: var(--blue); }
+  .l2 .layer-num { background: var(--orange); }
+  .l3 .layer-num { background: var(--purple); }
+  .layer-body h3 { font-size: 1.15rem; font-weight: 700; }
+  .layer-body .tool { font-size: 0.82rem; color: var(--text-sub); margin: 4px 0; }
+  .layer-body p { font-size: 0.9rem; color: var(--text-sub); margin-top: 4px; }
+  .layer-meta { text-align: right; }
+  .layer-meta .file {
+    display: inline-block;
+    background: var(--gray-light);
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-family: 'SFMono-Regular', monospace;
+    margin: 2px 0;
+    color: var(--gray);
+  }
+
+  /* ===== Architecture Diagram ===== */
+  .arch-diagram {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: var(--shadow);
+    overflow-x: auto;
+  }
+  .arch-svg { width: 100%; height: auto; min-width: 800px; }
+
+  /* ===== Data Schema ===== */
+  .schema-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+  }
+  .pillar-card {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    border-top: 4px solid;
+  }
+  .pillar-card.p1 { border-color: #5C6BC0; }
+  .pillar-card.p2 { border-color: #EF5350; }
+  .pillar-card.p3 { border-color: #FFA726; }
+  .pillar-card.p4 { border-color: #66BB6A; }
+  .pillar-card.p5 { border-color: #AB47BC; }
+  .pillar-card.p6 { border-color: #26C6DA; }
+  .pillar-card.p7 { border-color: #8D6E63; }
+  .pillar-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .pillar-header .num {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; font-weight: 700; color: white;
+  }
+  .p1 .num { background: #5C6BC0; } .p2 .num { background: #EF5350; }
+  .p3 .num { background: #FFA726; } .p4 .num { background: #66BB6A; }
+  .p5 .num { background: #AB47BC; } .p6 .num { background: #26C6DA; }
+  .p7 .num { background: #8D6E63; }
+  .pillar-header h4 { font-size: 0.95rem; }
+  .pillar-value { font-size: 0.72rem; padding: 2px 8px; border-radius: 10px; background: var(--gray-light); color: var(--gray); }
+  .node-list { list-style: none; padding: 0; margin-top: 8px; }
+  .node-list li {
+    font-size: 0.82rem; padding: 4px 0; border-bottom: 1px solid var(--gray-light);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .node-list li:last-child { border-bottom: none; }
+  .node-badge {
+    font-family: monospace; font-size: 0.72rem; padding: 1px 7px;
+    border-radius: 8px; background: #E8EAF6; color: #3F51B5; font-weight: 600;
+  }
+
+  /* ===== Tech Stack ===== */
+  .tech-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .tech-card {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+  }
+  .tech-card h4 { font-size: 0.95rem; margin-bottom: 10px; color: var(--text); }
+  .tech-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 0; font-size: 0.85rem;
+    border-bottom: 1px solid var(--gray-light);
+  }
+  .tech-item:last-child { border-bottom: none; }
+  .tech-icon { width: 20px; text-align: center; font-size: 0.9rem; }
+  .tech-label { font-weight: 600; }
+  .tech-ver { font-size: 0.72rem; color: var(--text-sub); margin-left: auto; }
+
+  /* ===== File Tree ===== */
+  .file-tree {
+    background: #1E1E2E;
+    color: #CDD6F4;
+    border-radius: 12px;
+    padding: 24px;
+    font-family: 'SFMono-Regular', Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.9;
+    overflow-x: auto;
+    box-shadow: var(--shadow);
+  }
+  .file-tree .dir { color: #89B4FA; font-weight: 600; }
+  .file-tree .file { color: #A6E3A1; }
+  .file-tree .comment { color: #6C7086; font-style: italic; }
+  .file-tree .entry { color: #F9E2AF; font-weight: 700; }
+
+  /* ===== Protocols ===== */
+  .protocol-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .protocol-card {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: var(--shadow);
+    border-left: 4px solid;
+  }
+  .protocol-card.emergency { border-color: var(--red); }
+  .protocol-card.parent-down { border-color: var(--orange); }
+  .protocol-card.onboarding { border-color: var(--green); }
+  .protocol-card.handover { border-color: var(--blue); }
+  .protocol-icon { font-size: 1.8rem; margin-bottom: 8px; }
+  .protocol-card h4 { font-size: 0.95rem; margin-bottom: 6px; }
+  .protocol-card p { font-size: 0.82rem; color: var(--text-sub); }
+
+  /* ===== Flow ===== */
+  .flow-container {
+    background: var(--card);
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: var(--shadow);
+  }
+  .flow-row {
+    display: flex; align-items: center; justify-content: center;
+    gap: 12px; flex-wrap: wrap; margin: 12px 0;
+  }
+  .flow-box {
+    padding: 12px 20px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-align: center;
+    min-width: 160px;
+  }
+  .flow-arrow { font-size: 1.3rem; color: var(--text-sub); }
+  .flow-input { background: #E3F2FD; color: var(--blue); border: 2px solid var(--blue); }
+  .flow-ai { background: #F3E5F5; color: var(--purple); border: 2px solid var(--purple); }
+  .flow-db { background: #E8F5E9; color: var(--green); border: 2px solid var(--green); }
+  .flow-out { background: #FFF3E0; color: var(--orange); border: 2px solid var(--orange); }
+  .flow-alert { background: #FFEBEE; color: var(--red); border: 2px solid var(--red); }
+  .flow-label { font-size: 0.72rem; color: var(--text-sub); text-align: center; margin-top: 4px; }
+
+  /* ===== Footer ===== */
+  .footer {
+    text-align: center; padding: 32px 0; margin-top: 48px;
+    border-top: 1px solid var(--border);
+    color: var(--text-sub); font-size: 0.8rem;
+  }
+
+  @media (max-width: 768px) {
+    .hero h1 { font-size: 1.4rem; }
+    .layer-card { grid-template-columns: 1fr; text-align: center; }
+    .layer-meta { text-align: center; }
+    .values-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Hero ===== -->
+<div class="hero">
+  <h1>親亡き後支援データベース</h1>
+  <div class="subtitle">Post-Parent Support &amp; Advocacy Graph</div>
+  <div class="version">Manifesto v4.0 &middot; neo4j-agno-agent</div>
+</div>
+
+<div class="container">
+
+<!-- ===== 5 Values ===== -->
+<div class="section">
+  <div class="section-title">5つの価値 (The 5 Values)</div>
+  <div class="values-grid">
+    <div class="value-card">
+      <div class="value-icon">🕊️</div>
+      <div class="value-name">尊厳</div>
+      <div class="value-en">Dignity</div>
+      <div class="value-desc">歴史と意思を持つ人間として記録する</div>
+    </div>
+    <div class="value-card">
+      <div class="value-icon">🛡️</div>
+      <div class="value-name">安全</div>
+      <div class="value-en">Safety</div>
+      <div class="value-desc">緊急時に迷わせない構造を作る</div>
+    </div>
+    <div class="value-card">
+      <div class="value-icon">🔗</div>
+      <div class="value-name">継続性</div>
+      <div class="value-en">Continuity</div>
+      <div class="value-desc">支援者が替わってもケアの質を維持</div>
+    </div>
+    <div class="value-card">
+      <div class="value-icon">💪</div>
+      <div class="value-name">強靭性</div>
+      <div class="value-en">Resilience</div>
+      <div class="value-desc">親の機能を即座に代替できる体制</div>
+    </div>
+    <div class="value-card">
+      <div class="value-icon">⚖️</div>
+      <div class="value-name">権利擁護</div>
+      <div class="value-en">Advocacy</div>
+      <div class="value-desc">声なき声を法的後ろ盾と紐づける</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 3-Layer Workflow ===== -->
+<div class="section">
+  <div class="section-title">3層ワークフロー</div>
+  <div class="layers">
+    <div class="layer-card l1">
+      <div class="layer-num">1</div>
+      <div class="layer-body">
+        <h3>初期登録 (Narrative Archive)</h3>
+        <div class="tool">Streamlit &middot; Gemini 2.0 Flash</div>
+        <p>親御さんからのヒアリング内容やファイルをAIが構造化してNeo4jに登録</p>
+      </div>
+      <div class="layer-meta">
+        <span class="file">app_narrative.py</span><br>
+        <span class="file">lib/ai_extractor.py</span><br>
+        <span class="file">lib/file_readers.py</span>
+      </div>
+    </div>
+    <div class="layer-card l2">
+      <div class="layer-num">2</div>
+      <div class="layer-body">
+        <h3>クイック記録 (Quick Log)</h3>
+        <div class="tool">Streamlit &middot; モバイル対応</div>
+        <p>支援者がスマホから30秒で例外的な事象のみ記録（普通は記録しない）</p>
+      </div>
+      <div class="layer-meta">
+        <span class="file">app_quick_log.py</span><br>
+        <span class="file">lib/voice_input.py</span>
+      </div>
+    </div>
+    <div class="layer-card l3">
+      <div class="layer-num">3</div>
+      <div class="layer-body">
+        <h3>AI分析 (Claude Desktop + MCP)</h3>
+        <div class="tool">Claude Desktop &middot; MCP Protocol</div>
+        <p>自然言語でグラフDBを照会、分析提案、レジリエンスレポート生成</p>
+      </div>
+      <div class="layer-meta">
+        <span class="file">server.py</span><br>
+        <span class="file">agents/MANIFESTO.md</span><br>
+        <span class="file">agents/protocols/</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Architecture Diagram ===== -->
+<div class="section">
+  <div class="section-title">システムアーキテクチャ</div>
+  <div class="arch-diagram">
+    <svg class="arch-svg" viewBox="0 0 960 520" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-auto">
+          <path d="M 0 0 L 10 5 L 0 10 z" fill="#90A4AE"/>
+        </marker>
+        <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1"/></filter>
+      </defs>
+
+      <!-- User / Browser -->
+      <rect x="20" y="20" width="920" height="80" rx="12" fill="#E8EAF6" stroke="#C5CAE9" filter="url(#shadow)"/>
+      <text x="480" y="48" text-anchor="middle" font-size="13" font-weight="700" fill="#283593">ユーザー / ブラウザ</text>
+      <text x="160" y="72" text-anchor="middle" font-size="11" fill="#5C6BC0">📋 初期登録 (:8501)</text>
+      <text x="400" y="72" text-anchor="middle" font-size="11" fill="#5C6BC0">⚡ クイック記録 (:8501)</text>
+      <text x="620" y="72" text-anchor="middle" font-size="11" fill="#5C6BC0">🤖 AIチャット (:8501)</text>
+      <text x="830" y="72" text-anchor="middle" font-size="11" fill="#5C6BC0">📱 モバイル (:8080)</text>
+
+      <!-- Streamlit Layer -->
+      <rect x="20" y="130" width="580" height="90" rx="12" fill="#E3F2FD" stroke="#90CAF9" filter="url(#shadow)"/>
+      <text x="310" y="155" text-anchor="middle" font-size="12" font-weight="700" fill="#1565C0">Streamlit アプリケーション層</text>
+      <rect x="40" y="168" width="120" height="36" rx="8" fill="white" stroke="#42A5F5"/>
+      <text x="100" y="190" text-anchor="middle" font-size="10" fill="#1565C0">app.py</text>
+      <rect x="175" y="168" width="120" height="36" rx="8" fill="white" stroke="#42A5F5"/>
+      <text x="235" y="190" text-anchor="middle" font-size="10" fill="#1565C0">app_narrative.py</text>
+      <rect x="310" y="168" width="120" height="36" rx="8" fill="white" stroke="#42A5F5"/>
+      <text x="370" y="190" text-anchor="middle" font-size="10" fill="#1565C0">app_quick_log.py</text>
+      <rect x="445" y="168" width="120" height="36" rx="8" fill="white" stroke="#42A5F5"/>
+      <text x="505" y="190" text-anchor="middle" font-size="10" fill="#1565C0">app_ui.py</text>
+
+      <!-- API Servers -->
+      <rect x="620" y="130" width="320" height="90" rx="12" fill="#FFF3E0" stroke="#FFE0B2" filter="url(#shadow)"/>
+      <text x="780" y="155" text-anchor="middle" font-size="12" font-weight="700" fill="#E65100">FastAPI サーバー</text>
+      <rect x="640" y="168" width="130" height="36" rx="8" fill="white" stroke="#FF9800"/>
+      <text x="705" y="190" text-anchor="middle" font-size="10" fill="#E65100">sos/api_server.py</text>
+      <rect x="790" y="168" width="130" height="36" rx="8" fill="white" stroke="#FF9800"/>
+      <text x="855" y="190" text-anchor="middle" font-size="10" fill="#E65100">mobile/api_server.py</text>
+
+      <!-- Shared Library -->
+      <rect x="20" y="250" width="450" height="80" rx="12" fill="#E8F5E9" stroke="#A5D6A7" filter="url(#shadow)"/>
+      <text x="245" y="275" text-anchor="middle" font-size="12" font-weight="700" fill="#2E7D32">共有ライブラリ (lib/)</text>
+      <rect x="40" y="290" width="100" height="28" rx="6" fill="white" stroke="#66BB6A"/>
+      <text x="90" y="309" text-anchor="middle" font-size="9" fill="#2E7D32">db_operations</text>
+      <rect x="150" y="290" width="100" height="28" rx="6" fill="white" stroke="#66BB6A"/>
+      <text x="200" y="309" text-anchor="middle" font-size="9" fill="#2E7D32">ai_extractor</text>
+      <rect x="260" y="290" width="90" height="28" rx="6" fill="white" stroke="#66BB6A"/>
+      <text x="305" y="309" text-anchor="middle" font-size="9" fill="#2E7D32">file_readers</text>
+      <rect x="360" y="290" width="90" height="28" rx="6" fill="white" stroke="#66BB6A"/>
+      <text x="405" y="309" text-anchor="middle" font-size="9" fill="#2E7D32">utils</text>
+
+      <!-- MCP Server -->
+      <rect x="490" y="250" width="220" height="80" rx="12" fill="#F3E5F5" stroke="#CE93D8" filter="url(#shadow)"/>
+      <text x="600" y="275" text-anchor="middle" font-size="12" font-weight="700" fill="#6A1B9A">MCP サーバー</text>
+      <rect x="510" y="290" width="180" height="28" rx="6" fill="white" stroke="#AB47BC"/>
+      <text x="600" y="309" text-anchor="middle" font-size="9" fill="#6A1B9A">server.py (40+ tools)</text>
+
+      <!-- AI Models -->
+      <rect x="730" y="250" width="210" height="80" rx="12" fill="#FCE4EC" stroke="#F48FB1" filter="url(#shadow)"/>
+      <text x="835" y="275" text-anchor="middle" font-size="12" font-weight="700" fill="#C62828">AI モデル</text>
+      <rect x="745" y="290" width="85" height="28" rx="6" fill="white" stroke="#EF5350"/>
+      <text x="787" y="309" text-anchor="middle" font-size="9" fill="#C62828">Gemini 2.0</text>
+      <rect x="840" y="290" width="85" height="28" rx="6" fill="white" stroke="#EF5350"/>
+      <text x="882" y="309" text-anchor="middle" font-size="9" fill="#C62828">Claude</text>
+
+      <!-- Neo4j -->
+      <rect x="160" y="380" width="320" height="100" rx="16" fill="#263238" filter="url(#shadow)"/>
+      <text x="320" y="410" text-anchor="middle" font-size="14" font-weight="700" fill="#4DD0E1">Neo4j Graph Database</text>
+      <text x="320" y="432" text-anchor="middle" font-size="10" fill="#80CBC4">Community 5.15 &middot; Bolt :7687 &middot; HTTP :7474</text>
+      <text x="320" y="460" text-anchor="middle" font-size="10" fill="#80CBC4">Client ← NgAction ← CarePreference ← SupportLog</text>
+
+      <!-- External Services -->
+      <rect x="540" y="390" width="190" height="80" rx="12" fill="#FFF8E1" stroke="#FFE082" filter="url(#shadow)"/>
+      <text x="635" y="415" text-anchor="middle" font-size="11" font-weight="700" fill="#F57F17">外部サービス</text>
+      <text x="635" y="438" text-anchor="middle" font-size="10" fill="#F9A825">LINE Messaging API</text>
+      <text x="635" y="455" text-anchor="middle" font-size="10" fill="#F9A825">Google AI (Gemini)</text>
+
+      <!-- Docker -->
+      <rect x="780" y="390" width="160" height="80" rx="12" fill="#E0F7FA" stroke="#80DEEA" filter="url(#shadow)"/>
+      <text x="860" y="415" text-anchor="middle" font-size="11" font-weight="700" fill="#00838F">Docker Compose</text>
+      <text x="860" y="438" text-anchor="middle" font-size="10" fill="#0097A7">neo4j:5.15-community</text>
+      <text x="860" y="455" text-anchor="middle" font-size="10" fill="#0097A7">APOC plugin</text>
+
+      <!-- Arrows -->
+      <line x1="310" y1="100" x2="310" y2="130" stroke="#90A4AE" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="780" y1="100" x2="780" y2="130" stroke="#90A4AE" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="245" y1="220" x2="245" y2="250" stroke="#90A4AE" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="600" y1="220" x2="600" y2="250" stroke="#90A4AE" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="780" y1="220" x2="835" y2="250" stroke="#90A4AE" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="200" y1="330" x2="280" y2="380" stroke="#90A4AE" stroke-width="1.5" marker-end="url(#arrow)"/>
+      <line x1="600" y1="330" x2="380" y2="380" stroke="#90A4AE" stroke-width="1.5" marker-end="url(#arrow)"/>
+    </svg>
+  </div>
+</div>
+
+<!-- ===== Data Flow ===== -->
+<div class="section">
+  <div class="section-title">データフロー</div>
+  <div class="flow-container">
+    <p style="font-size:0.9rem; font-weight:600; margin-bottom:16px; text-align:center;">Layer 1: ナラティブ入力 → AI構造化 → DB登録</p>
+    <div class="flow-row">
+      <div>
+        <div class="flow-box flow-input">📝 テキスト / ファイル</div>
+        <div class="flow-label">Word, Excel, PDF, 音声</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-ai">🧠 Gemini 2.0 Flash</div>
+        <div class="flow-label">ai_extractor.py</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-db">✅ 構造化JSON</div>
+        <div class="flow-label">確認・修正画面</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-db">🗄️ Neo4j 登録</div>
+        <div class="flow-label">db_operations.py</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.9rem; font-weight:600; margin:24px 0 16px; text-align:center;">Layer 3: 自然言語照会 → MCP → グラフ応答</p>
+    <div class="flow-row">
+      <div>
+        <div class="flow-box flow-input">💬 自然言語質問</div>
+        <div class="flow-label">Claude Desktop</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-ai">🔌 MCP Server</div>
+        <div class="flow-label">server.py (40+ tools)</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-db">🗄️ Neo4j Cypher</div>
+        <div class="flow-label">Bolt Protocol</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-out">📊 構造化回答</div>
+        <div class="flow-label">分析・レポート</div>
+      </div>
+    </div>
+
+    <p style="font-size:0.9rem; font-weight:600; margin:24px 0 16px; text-align:center;">SOS緊急通知フロー</p>
+    <div class="flow-row">
+      <div>
+        <div class="flow-box flow-alert">🆘 SOS ボタン</div>
+        <div class="flow-label">モバイルPWA</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-out">📡 FastAPI</div>
+        <div class="flow-label">sos/api_server.py</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-db">🗄️ Neo4j 照会</div>
+        <div class="flow-label">緊急連絡先・禁忌事項</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div>
+        <div class="flow-box flow-alert">📲 LINE 通知</div>
+        <div class="flow-label">グループLINEへ即時送信</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 7 Data Pillars ===== -->
+<div class="section">
+  <div class="section-title">データモデル 7本柱</div>
+  <div class="schema-grid">
+    <div class="pillar-card p1">
+      <div class="pillar-header">
+        <div class="num">1</div>
+        <h4>本人性 (Identity)</h4>
+        <span class="pillar-value">尊厳</span>
+      </div>
+      <ul class="node-list">
+        <li><span class="node-badge">:Client</span> 中心ノード（名前・生年月日・血液型）</li>
+        <li><span class="node-badge">:LifeHistory</span> 生育歴エピソード</li>
+        <li><span class="node-badge">:Wish</span> 本人・家族の願い</li>
+      </ul>
+    </div>
+    <div class="pillar-card p2">
+      <div class="pillar-header">
+        <div class="num">2</div>
+        <h4>ケアの暗黙知 (Care)</h4>
+        <span class="pillar-value">安全 / 継続性</span>
+      </div>
+      <ul class="node-list">
+        <li><span class="node-badge">:NgAction</span> 禁忌事項（最重要 / riskLevel付）</li>
+        <li><span class="node-badge">:CarePreference</span> 推奨ケア手順</li>
+        <li><span class="node-badge">:Condition</span> 特性・診断名</li>
+      </ul>
+    </div>
+    <div class="pillar-card p3">
+      <div class="pillar-header">
+        <div class="num">3</div>
+        <h4>危機管理ネットワーク (Safety Net)</h4>
+        <span class="pillar-value">安全</span>
+      </div>
+      <ul class="node-list">
+        <li><span class="node-badge">:KeyPerson</span> 緊急連絡先（優先順位付き）</li>
+        <li><span class="node-badge">:Guardian</span> 成年後見人</li>
+        <li><span class="node-badge">:Hospital</span> かかりつけ医療機関</li>
+      </ul>
+    </div>
+    <div class="pillar-card p4">
+      <div class="pillar-header">
+        <div class="num">4</div>
+        <h4>法的基盤 (Legal Basis)</h4>
+        <span class="pillar-value">権利擁護</span>
+      </div>
+      <ul class="node-list">
+        <li><span class="node-badge">:Certificate</span> 手帳・受給者証（更新日管理）</li>
+        <li><span class="node-badge">:PublicAssistance</span> 公的扶助</li>
+      </ul>
+    </div>
+    <div class="pillar-card p5">
+      <div class="pillar-header">
+        <div class="num">5</div>
+        <h4>親の機能移行 (Transition)</h4>
+        <span class="pillar-value">強靭性</span>
+      </div>
+      <ul class="node-list">
+        <li><span class="node-badge">:Supporter</span> 支援者</li>
+        <li><span class="node-badge">:SupportLog</span> 支援記録（effectiveness追跡）</li>
+      </ul>
+    </div>
+    <div class="pillar-card p6">
+      <div class="pillar-header">
+        <div class="num">6</div>
+        <h4>金銭的安全 (Financial Safety)</h4>
+        <span class="pillar-value">権利擁護</span>
+      </div>
+      <ul class="node-list">
+        <li><span class="node-badge">:EconomicRisk</span> 経済的搾取リスク</li>
+        <li><span class="node-badge">:MoneyManagement</span> 金銭管理能力</li>
+      </ul>
+    </div>
+    <div class="pillar-card p7">
+      <div class="pillar-header">
+        <div class="num">7</div>
+        <h4>多機関連携 (Collaboration)</h4>
+        <span class="pillar-value">継続性</span>
+      </div>
+      <ul class="node-list">
+        <li><span class="node-badge">:Organization</span> 連携先機関</li>
+        <li><span class="node-badge">:ServiceProvider</span> 事業所</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Protocols ===== -->
+<div class="section">
+  <div class="section-title">エージェントプロトコル</div>
+  <div class="protocol-grid">
+    <div class="protocol-card emergency">
+      <div class="protocol-icon">🚨</div>
+      <h4>Emergency Protocol</h4>
+      <p>本人の緊急事態発生時。NgAction最優先確認、キーパーソン通知、SOS発動</p>
+    </div>
+    <div class="protocol-card parent-down">
+      <div class="protocol-icon">🏥</div>
+      <h4>Parent Down Protocol</h4>
+      <p>親が倒れた際の即座の機能代替。後見人連絡、支援体制の再構築</p>
+    </div>
+    <div class="protocol-card onboarding">
+      <div class="protocol-icon">👋</div>
+      <h4>Onboarding Protocol</h4>
+      <p>新規支援者の受入。禁忌事項の優先学習、ケアマニュアルの引き継ぎ</p>
+    </div>
+    <div class="protocol-card handover">
+      <div class="protocol-icon">🔄</div>
+      <h4>Handover Protocol</h4>
+      <p>支援者交代時の引き継ぎ。文脈と暗黙知の継承、ケアの質維持</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Tech Stack ===== -->
+<div class="section">
+  <div class="section-title">技術スタック</div>
+  <div class="tech-grid">
+    <div class="tech-card">
+      <h4>🗄️ データベース</h4>
+      <div class="tech-item">
+        <span class="tech-icon">🔵</span>
+        <span class="tech-label">Neo4j</span>
+        <span class="tech-ver">5.15 Community</span>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">🐳</span>
+        <span class="tech-label">Docker Compose</span>
+        <span class="tech-ver">APOC plugin</span>
+      </div>
+    </div>
+    <div class="tech-card">
+      <h4>🐍 バックエンド</h4>
+      <div class="tech-item">
+        <span class="tech-icon">🐍</span>
+        <span class="tech-label">Python</span>
+        <span class="tech-ver">3.12+</span>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">📦</span>
+        <span class="tech-label">uv</span>
+        <span class="tech-ver">パッケージ管理</span>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">⚡</span>
+        <span class="tech-label">FastAPI</span>
+        <span class="tech-ver">SOS / Mobile API</span>
+      </div>
+    </div>
+    <div class="tech-card">
+      <h4>🖥️ フロントエンド</h4>
+      <div class="tech-item">
+        <span class="tech-icon">🎈</span>
+        <span class="tech-label">Streamlit</span>
+        <span class="tech-ver">1.33+</span>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">📱</span>
+        <span class="tech-label">PWA</span>
+        <span class="tech-ver">SOS モバイル</span>
+      </div>
+    </div>
+    <div class="tech-card">
+      <h4>🤖 AI / エージェント</h4>
+      <div class="tech-item">
+        <span class="tech-icon">💎</span>
+        <span class="tech-label">Gemini 2.0 Flash</span>
+        <span class="tech-ver">テキスト構造化</span>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">🧠</span>
+        <span class="tech-label">Claude + MCP</span>
+        <span class="tech-ver">自然言語照会</span>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">🔗</span>
+        <span class="tech-label">Agno Framework</span>
+        <span class="tech-ver">2.3+</span>
+      </div>
+    </div>
+    <div class="tech-card">
+      <h4>📡 外部連携</h4>
+      <div class="tech-item">
+        <span class="tech-icon">💬</span>
+        <span class="tech-label">LINE Messaging API</span>
+        <span class="tech-ver">SOS通知</span>
+      </div>
+      <div class="tech-item">
+        <span class="tech-icon">🌐</span>
+        <span class="tech-label">Google AI API</span>
+        <span class="tech-ver">Gemini</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== File Tree ===== -->
+<div class="section">
+  <div class="section-title">ファイル構成</div>
+  <div class="file-tree">
+<span class="dir">neo4j-agno-agent/</span>
+├── <span class="entry">app.py</span>               <span class="comment"># Dashboard エントリポイント (st.navigation)</span>
+├── <span class="entry">app_narrative.py</span>      <span class="comment"># Layer 1: 初期登録UI</span>
+├── <span class="entry">app_quick_log.py</span>      <span class="comment"># Layer 2: クイック記録UI</span>
+├── <span class="file">app_ui.py</span>             <span class="comment"># Agno/Gemini チャットUI</span>
+├── <span class="entry">server.py</span>             <span class="comment"># MCP サーバー (40+ tools)</span>
+│
+├── <span class="dir">pages/</span>                <span class="comment"># Dashboard サブページ</span>
+│   ├── <span class="file">home.py</span>           <span class="comment"># 統計 + 3層カード + 更新アラート</span>
+│   ├── <span class="file">client_list.py</span>    <span class="comment"># クライアント一覧</span>
+│   └── <span class="file">claude_guide.py</span>   <span class="comment"># Claude Desktop 活用ガイド</span>
+│
+├── <span class="dir">lib/</span>                  <span class="comment"># 共有ライブラリ</span>
+│   ├── <span class="file">db_operations.py</span>  <span class="comment"># Neo4j接続・CRUD・監査ログ</span>
+│   ├── <span class="file">ai_extractor.py</span>   <span class="comment"># Gemini構造化 + 安全性チェック</span>
+│   ├── <span class="file">file_readers.py</span>   <span class="comment"># Word/Excel/PDF パーサー</span>
+│   ├── <span class="file">voice_input.py</span>    <span class="comment"># Web Speech API コンポーネント</span>
+│   └── <span class="file">utils.py</span>          <span class="comment"># 日付パース・セッション管理</span>
+│
+├── <span class="dir">agents/</span>               <span class="comment"># エージェントプロトコル</span>
+│   ├── <span class="file">MANIFESTO.md</span>      <span class="comment"># マニフェスト v4.0</span>
+│   ├── <span class="file">ROUTING.md</span>        <span class="comment"># MCPサーバー選択ガイド</span>
+│   ├── <span class="dir">protocols/</span>        <span class="comment"># Emergency, Parent Down, Onboarding, Handover</span>
+│   └── <span class="dir">workflows/</span>        <span class="comment"># Visit Prep, Resilience Report, Renewal Check</span>
+│
+├── <span class="dir">sos/</span>                  <span class="comment"># SOS緊急通知システム</span>
+│   └── <span class="file">api_server.py</span>    <span class="comment"># FastAPI + LINE通知</span>
+│
+├── <span class="dir">mobile/</span>               <span class="comment"># モバイルナラティブ入力</span>
+│   └── <span class="file">api_server.py</span>    <span class="comment"># FastAPI + Gemini構造化</span>
+│
+├── <span class="file">docker-compose.yml</span>    <span class="comment"># Neo4j コンテナ定義</span>
+└── <span class="file">pyproject.toml</span>        <span class="comment"># 依存管理 (uv)</span>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<div class="footer">
+  親亡き後支援データベース &middot; Manifesto v4.0 &middot; Generated 2026-02-10
+</div>
+
+</body>
+</html>
