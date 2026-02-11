@@ -13,6 +13,8 @@ Version: 2.0
 import os
 import sys
 import json
+import subprocess
+import tempfile
 from datetime import datetime, timedelta, date
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -1795,34 +1797,37 @@ def update_provider_availability(
 # =============================================================================
 
 @mcp.tool()
-def generate_ecomap(client_name: str, format: str = "mermaid") -> str:
+def generate_ecomap(client_name: str, format: str = "pdf") -> str:
     """
     クライアントのエコマップ（支援ネットワーク図）を生成します。
 
     Neo4jからクライアントを中心とした支援ネットワーク情報を取得し、
-    Mermaid形式の図として出力します。Claude Desktopでそのまま
-    表示・コピーできます。
+    放射状レイアウトの美しいエコマップを出力します。
 
     図に含まれる情報：
     - 家族・キーパーソン（緊急連絡先の優先順位つき）
     - 後見人・法的代理人
     - 医療機関（かかりつけ医）
     - 支援者（ヘルパー・相談員等）
-    - 利用中の福祉サービス事業所
+    - 手帳・受給者証・公的扶助（更新期限アラート付き）
 
     Args:
         client_name: クライアントの名前（部分一致可）
-        format: 出力形式（'mermaid' または 'text'）
+        format: 出力形式
+            - 'pdf': PDFファイルを生成（デフォルト・推奨）
+            - 'html': HTMLファイルを生成
+            - 'mermaid': Mermaid図を生成
+            - 'text': テキスト形式
 
     Returns:
-        エコマップ（Mermaid図またはテキスト形式）
+        エコマップ（PDF/HTMLのファイルパス、またはMermaid/テキスト）
 
     使用例:
         - 「田中太郎さんのエコマップを作成して」
-        - 「佐藤花子さんの支援ネットワーク図を見せて」
+        - 「佐藤花子さんの支援ネットワーク図をPDFで」
     """
     try:
-        log(f"エコマップ生成: {client_name}")
+        log(f"エコマップ生成: {client_name} (format={format})")
 
         query = """
         MATCH (c:Client)
@@ -1871,10 +1876,27 @@ def generate_ecomap(client_name: str, format: str = "mermaid") -> str:
             phone: sp.phone
         }) AS providers
 
+        // 手帳・受給者証
+        OPTIONAL MATCH (c)-[:HAS_CERTIFICATE]->(cert:Certificate)
+        WITH c, keyPersons, guardians, hospitals, supporters, providers, collect(DISTINCT {
+            name: cert.name,
+            grade: cert.grade,
+            nextRenewalDate: cert.nextRenewalDate
+        }) AS certificates
+
+        // 公的扶助
+        OPTIONAL MATCH (c)-[:RECEIVES]->(pa:PublicAssistance)
+        WITH c, keyPersons, guardians, hospitals, supporters, providers, certificates, collect(DISTINCT {
+            name: pa.name,
+            grade: pa.grade
+        }) AS publicAssistance
+
         RETURN
             c.name AS clientName,
             c.dob AS dob,
-            keyPersons, guardians, hospitals, supporters, providers
+            c.bloodType AS bloodType,
+            keyPersons, guardians, hospitals, supporters, providers,
+            certificates, publicAssistance
         """
 
         with driver.session() as session:
@@ -1886,17 +1908,95 @@ def generate_ecomap(client_name: str, format: str = "mermaid") -> str:
 
             record = data[0]
             name = record['clientName']
+            dob = record.get('dob')
+            blood_type = record.get('bloodType') or ''
+            age = calculate_age(dob)
             key_persons = [x for x in record.get('keyPersons', []) if x.get('name')]
             guardians = [x for x in record.get('guardians', []) if x.get('name')]
             hospitals = [x for x in record.get('hospitals', []) if x.get('name')]
             supporters = [x for x in record.get('supporters', []) if x.get('name')]
             providers = [x for x in record.get('providers', []) if x.get('name')]
+            certificates = [x for x in record.get('certificates', []) if x.get('name')]
+            public_assistance = [x for x in record.get('publicAssistance', []) if x.get('name')]
 
             # 優先順位でソート
             key_persons.sort(key=lambda x: x.get('rank') or 99)
 
             if format == "text":
                 return _build_ecomap_text(name, key_persons, guardians, hospitals, supporters, providers)
+            elif format == "mermaid":
+                return _build_ecomap_mermaid(name, key_persons, guardians, hospitals, supporters, providers)
+            elif format in ("html", "pdf"):
+                # カテゴリデータ構築
+                categories_data = _build_ecomap_categories(
+                    key_persons, guardians, hospitals, supporters,
+                    certificates, public_assistance
+                )
+
+                if not categories_data:
+                    return json.dumps({
+                        "⚠️ エコマップ": f"{name}さんのネットワーク情報がまだ登録されていません。",
+                        "💡 ヒント": "キーパーソン、後見人、医療機関、支援者の情報を登録すると、エコマップを生成できます。"
+                    }, ensure_ascii=False, indent=2)
+
+                # HTML生成
+                html_content = _build_ecomap_html(name, age, blood_type, categories_data)
+
+                # ファイル保存先
+                downloads_dir = os.path.expanduser("~/Downloads")
+                os.makedirs(downloads_dir, exist_ok=True)
+                today_str = date.today().strftime("%Y%m%d")
+                safe_name = name.replace(" ", "_")
+
+                if format == "pdf":
+                    # HTML → PDF → HTML削除
+                    html_path = os.path.join(tempfile.gettempdir(), f"ecomap_{safe_name}_{today_str}.html")
+                    pdf_path = os.path.join(downloads_dir, f"{safe_name}_エコマップ_{today_str}.pdf")
+
+                    with open(html_path, "w", encoding="utf-8") as f:
+                        f.write(html_content)
+
+                    success = _convert_html_to_pdf(html_path, pdf_path)
+
+                    # HTML一時ファイル削除
+                    try:
+                        os.remove(html_path)
+                    except OSError:
+                        pass
+
+                    if success:
+                        return json.dumps({
+                            "✅ エコマップPDF生成完了": f"{name}さん",
+                            "📄 ファイル": pdf_path,
+                            "ネットワーク構成": {
+                                "家族・キーパーソン": f"{len(key_persons)}名",
+                                "後見人": f"{len(guardians)}名",
+                                "医療機関": f"{len(hospitals)}箇所",
+                                "支援者": f"{len(supporters)}名",
+                                "手帳・制度": f"{len(certificates) + len(public_assistance)}件"
+                            }
+                        }, ensure_ascii=False, indent=2)
+                    else:
+                        # PDF変換失敗時はHTMLにフォールバック
+                        html_path = os.path.join(downloads_dir, f"{safe_name}_エコマップ_{today_str}.html")
+                        with open(html_path, "w", encoding="utf-8") as f:
+                            f.write(html_content)
+                        return json.dumps({
+                            "⚠️ PDF変換に失敗しました（HTMLで出力）": f"{name}さん",
+                            "📄 ファイル": html_path,
+                            "💡 ヒント": "HTMLファイルをChromeで開き、Cmd+PでPDFとして保存できます。"
+                        }, ensure_ascii=False, indent=2)
+                else:
+                    # HTMLファイル生成
+                    html_path = os.path.join(downloads_dir, f"{safe_name}_エコマップ_{today_str}.html")
+                    with open(html_path, "w", encoding="utf-8") as f:
+                        f.write(html_content)
+
+                    return json.dumps({
+                        "✅ エコマップHTML生成完了": f"{name}さん",
+                        "📄 ファイル": html_path,
+                        "💡 ヒント": "Chromeで開くと放射状レイアウトのエコマップが表示されます。Cmd+PでPDFに変換可能です。"
+                    }, ensure_ascii=False, indent=2)
             else:
                 return _build_ecomap_mermaid(name, key_persons, guardians, hospitals, supporters, providers)
 
@@ -2085,6 +2185,404 @@ def _build_ecomap_text(name, key_persons, guardians, hospitals, supporters, prov
         sections.append("")
 
     return "\n".join(sections)
+
+
+# =============================================================================
+# ツール20b: エコマップHTML放射状レイアウト生成
+# =============================================================================
+
+ECOMAP_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>エコマップ - {client_name}さん</title>
+<style>
+  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+  body {{
+    background: #FAFAFA;
+    font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', 'Yu Gothic', sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    min-height: 100vh; padding: 20px;
+  }}
+  h1 {{ font-size: 20px; color: #333; margin-bottom: 4px; font-weight: 600; }}
+  .subtitle {{ font-size: 12px; color: #888; margin-bottom: 16px; }}
+  #ecomap-container {{ width: 100%; max-width: 1100px; aspect-ratio: 11/9; position: relative; }}
+  svg {{ width: 100%; height: 100%; }}
+  .legend {{
+    display: flex; flex-wrap: wrap; gap: 16px; margin-top: 16px; justify-content: center;
+  }}
+  .legend-item {{ display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }}
+  .legend-color {{ width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.15); }}
+  @media print {{
+    body {{ padding: 10px; }}
+    h1 {{ font-size: 18px; }}
+  }}
+</style>
+</head>
+<body>
+<h1>エコマップ（支援ネットワーク図）</h1>
+<p class="subtitle">{client_name}さん（{client_age}歳）| 作成日: {date_str}</p>
+<div id="ecomap-container">
+  <svg id="ecomap" viewBox="0 0 1100 900" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+        <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.12"/>
+      </filter>
+      <filter id="shadow-lg" x="-6%" y="-6%" width="112%" height="112%">
+        <feDropShadow dx="0" dy="3" stdDeviation="5" flood-opacity="0.18"/>
+      </filter>
+    </defs>
+  </svg>
+</div>
+<div class="legend">
+  <div class="legend-item"><div class="legend-color" style="background:#FFF3E0;border-color:#E65100;"></div>家族・キーパーソン</div>
+  <div class="legend-item"><div class="legend-color" style="background:#F3E5F5;border-color:#6A1B9A;"></div>後見人（法的支援）</div>
+  <div class="legend-item"><div class="legend-color" style="background:#FFEBEE;border-color:#C62828;"></div>医療機関</div>
+  <div class="legend-item"><div class="legend-color" style="background:#E8F5E9;border-color:#2E7D32;"></div>支援者</div>
+  <div class="legend-item"><div class="legend-color" style="background:#E0F2F1;border-color:#00695C;"></div>手帳・制度</div>
+</div>
+<script>
+const clientName = {client_name_json};
+const clientAge = {client_age_json};
+const clientBlood = {client_blood_json};
+const categories = {categories_json};
+
+const CX = 550, CY = 450, RADIUS = 310;
+const totalNodes = categories.reduce((s, c) => s + c.nodes.length, 0);
+const GAP_ANGLE = 8;
+const totalGap = GAP_ANGLE * categories.length;
+const usableAngle = 360 - totalGap;
+let currentAngle = -90;
+
+categories.forEach(cat => {{
+  const sectorAngle = (cat.nodes.length / totalNodes) * usableAngle;
+  cat.startAngle = currentAngle;
+  cat.endAngle = currentAngle + sectorAngle;
+  const step = sectorAngle / (cat.nodes.length + 1);
+  cat.nodes.forEach((node, i) => {{
+    const angle = cat.startAngle + step * (i + 1);
+    const rad = angle * Math.PI / 180;
+    node.x = CX + RADIUS * Math.cos(rad);
+    node.y = CY + RADIUS * Math.sin(rad);
+    node.angle = angle;
+  }});
+  currentAngle = cat.endAngle + GAP_ANGLE;
+}});
+
+const svg = document.getElementById("ecomap");
+function el(tag, attrs = {{}}) {{
+  const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}}
+
+// 同心円ガイド
+[160, 310].forEach(r => {{
+  svg.appendChild(el("circle", {{ cx: CX, cy: CY, r, fill: "none", stroke: "#E0E0E0", "stroke-width": "1", "stroke-dasharray": "4 4", opacity: "0.6" }}));
+}});
+
+// カテゴリセクタ背景
+categories.forEach(cat => {{
+  const r = RADIUS + 80;
+  const startRad = cat.startAngle * Math.PI / 180;
+  const endRad = cat.endAngle * Math.PI / 180;
+  const x1 = CX + r * Math.cos(startRad), y1 = CY + r * Math.sin(startRad);
+  const x2 = CX + r * Math.cos(endRad), y2 = CY + r * Math.sin(endRad);
+  const largeArc = (cat.endAngle - cat.startAngle) > 180 ? 1 : 0;
+  svg.appendChild(el("path", {{
+    d: `M ${{CX}} ${{CY}} L ${{x1}} ${{y1}} A ${{r}} ${{r}} 0 ${{largeArc}} 1 ${{x2}} ${{y2}} Z`,
+    fill: cat.bg, opacity: "0.35", stroke: "none"
+  }}));
+}});
+
+// 接続線とラベル
+categories.forEach(cat => {{
+  cat.nodes.forEach(node => {{
+    const dx = node.x - CX, dy = node.y - CY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const sx = CX + (dx / dist) * 55, sy = CY + (dy / dist) * 55;
+    const ex = node.x - (dx / dist) * 50, ey = node.y - (dy / dist) * 50;
+    svg.appendChild(el("line", {{
+      x1: sx, y1: sy, x2: ex, y2: ey,
+      stroke: cat.color, "stroke-width": "2", opacity: "0.35", "stroke-linecap": "round"
+    }}));
+    if (node.detail) {{
+      const mx = (sx + ex) / 2, my = (sy + ey) / 2;
+      const labelText = node.detail.length > 14 ? node.detail.substring(0, 14) : node.detail;
+      let textAngle = Math.atan2(ey - sy, ex - sx) * 180 / Math.PI;
+      if (textAngle > 90 || textAngle < -90) textAngle += 180;
+      const g = el("g", {{ transform: `translate(${{mx}},${{my}}) rotate(${{textAngle}})` }});
+      g.appendChild(el("rect", {{
+        x: -labelText.length * 4 - 4, y: -8,
+        width: labelText.length * 8 + 8, height: 16,
+        rx: 3, fill: "white", opacity: "0.85"
+      }}));
+      const t = el("text", {{
+        x: 0, y: 0, "text-anchor": "middle", "dominant-baseline": "central",
+        "font-size": "10", fill: cat.color, opacity: "0.8"
+      }});
+      t.textContent = labelText;
+      g.appendChild(t);
+      svg.appendChild(g);
+    }}
+  }});
+}});
+
+// カテゴリラベル
+categories.forEach(cat => {{
+  const midAngle = (cat.startAngle + cat.endAngle) / 2;
+  const labelR = RADIUS + 95;
+  const rad = midAngle * Math.PI / 180;
+  const t = el("text", {{
+    x: CX + labelR * Math.cos(rad), y: CY + labelR * Math.sin(rad),
+    "text-anchor": "middle", "dominant-baseline": "central",
+    "font-size": "12", "font-weight": "600", fill: cat.color, opacity: "0.75"
+  }});
+  t.textContent = `${{cat.icon}} ${{cat.name}}`;
+  svg.appendChild(t);
+}});
+
+// ノード描画
+categories.forEach(cat => {{
+  cat.nodes.forEach(node => {{
+    const g = el("g", {{ filter: "url(#shadow)" }});
+    const boxW = 140, boxH = 56;
+    const rx = node.x - boxW / 2, ry = node.y - boxH / 2;
+    g.appendChild(el("rect", {{
+      x: rx, y: ry, width: boxW, height: boxH, rx: 10, ry: 10,
+      fill: cat.bg, stroke: cat.color,
+      "stroke-width": node.alert ? "2.5" : "1.5"
+    }}));
+    if (node.alert) {{
+      g.appendChild(el("circle", {{ cx: rx + boxW - 4, cy: ry + 4, r: 7, fill: "#F44336" }}));
+      const bt = el("text", {{
+        x: rx + boxW - 4, y: ry + 5, "text-anchor": "middle",
+        "dominant-baseline": "central", "font-size": "9", "font-weight": "bold", fill: "white"
+      }});
+      bt.textContent = "!";
+      g.appendChild(bt);
+    }}
+    const nameLines = node.name.split("\\n");
+    nameLines.forEach((line, i) => {{
+      const t = el("text", {{
+        x: node.x, y: node.y - 10 + (i - (nameLines.length - 1) / 2) * 14,
+        "text-anchor": "middle", "dominant-baseline": "central",
+        "font-size": "13", "font-weight": "600", fill: "#333"
+      }});
+      t.textContent = line;
+      g.appendChild(t);
+    }});
+    if (node.sub) {{
+      const st = el("text", {{
+        x: node.x, y: node.y + 8 + (nameLines.length > 1 ? 4 : 0),
+        "text-anchor": "middle", "dominant-baseline": "central",
+        "font-size": "10", fill: "#666"
+      }});
+      st.textContent = node.sub;
+      g.appendChild(st);
+    }}
+    svg.appendChild(g);
+  }});
+}});
+
+// 中心ノード
+const cg = el("g", {{ filter: "url(#shadow-lg)" }});
+cg.appendChild(el("circle", {{ cx: CX, cy: CY, r: 58, fill: "#E3F2FD", stroke: "#1565C0", "stroke-width": "3" }}));
+cg.appendChild(el("circle", {{ cx: CX, cy: CY - 12, r: 18, fill: "#BBDEFB", stroke: "none" }}));
+const icon = el("text", {{ x: CX, y: CY - 10, "text-anchor": "middle", "dominant-baseline": "central", "font-size": "22" }});
+icon.textContent = "\\uD83E\\uDDD1";
+cg.appendChild(icon);
+const nt = el("text", {{ x: CX, y: CY + 14, "text-anchor": "middle", "dominant-baseline": "central", "font-size": "16", "font-weight": "bold", fill: "#0D47A1" }});
+nt.textContent = clientName;
+cg.appendChild(nt);
+const it = el("text", {{ x: CX, y: CY + 32, "text-anchor": "middle", "dominant-baseline": "central", "font-size": "11", fill: "#42A5F5" }});
+it.textContent = `${{clientAge}}歳 / ${{clientBlood}}`;
+cg.appendChild(it);
+svg.appendChild(cg);
+</script>
+</body>
+</html>"""
+
+
+def _build_ecomap_categories(key_persons, guardians, hospitals, supporters, certificates, public_assistance):
+    """Neo4jデータからエコマップのカテゴリデータを構築"""
+    today = date.today()
+    categories = []
+
+    # 家族・キーパーソン
+    if key_persons:
+        nodes = []
+        for kp in key_persons:
+            rel = kp.get('relationship') or ''
+            rank = kp.get('rank')
+            detail = f"緊急連絡{rank}位" if rank else (kp.get('role') or '家族')
+            nodes.append({
+                "name": kp['name'],
+                "sub": rel,
+                "detail": detail,
+            })
+        categories.append({
+            "name": "家族・キーパーソン",
+            "color": "#E65100", "bg": "#FFF3E0", "icon": "👨‍👩‍👦",
+            "nodes": nodes
+        })
+
+    # 後見人
+    if guardians:
+        nodes = []
+        for g in guardians:
+            gtype = g.get('type') or '後見人'
+            gname = g['name']
+            # 長い名前は改行
+            if len(gname) > 8:
+                mid = len(gname) // 2
+                gname = gname[:mid] + "\\n" + gname[mid:]
+            nodes.append({
+                "name": gname,
+                "sub": gtype if '法人' not in gtype else gtype,
+                "detail": gtype,
+            })
+        categories.append({
+            "name": "後見人",
+            "color": "#6A1B9A", "bg": "#F3E5F5", "icon": "⚖️",
+            "nodes": nodes
+        })
+
+    # 医療機関
+    if hospitals:
+        nodes = []
+        for h in hospitals:
+            hname = h['name']
+            if len(hname) > 8:
+                mid = len(hname) // 2
+                hname = hname[:mid] + "\\n" + hname[mid:]
+            spec = h.get('specialty') or ''
+            doctor = h.get('doctor') or ''
+            detail = f"主治医: {doctor}" if doctor else ''
+            nodes.append({
+                "name": hname,
+                "sub": spec,
+                "detail": detail,
+            })
+        categories.append({
+            "name": "医療機関",
+            "color": "#C62828", "bg": "#FFEBEE", "icon": "🏥",
+            "nodes": nodes
+        })
+
+    # 支援者
+    if supporters:
+        nodes = []
+        for s in supporters:
+            org = s.get('organization') or ''
+            role = s.get('role') or ''
+            nodes.append({
+                "name": s['name'],
+                "sub": role,
+                "detail": org,
+            })
+        categories.append({
+            "name": "支援者",
+            "color": "#2E7D32", "bg": "#E8F5E9", "icon": "🤝",
+            "nodes": nodes
+        })
+
+    # 手帳・制度（Certificate + PublicAssistance を統合）
+    cert_pa_nodes = []
+    if certificates:
+        for cert in certificates:
+            renewal = cert.get('nextRenewalDate')
+            detail = ""
+            alert = False
+            if renewal:
+                if hasattr(renewal, 'to_native'):
+                    renewal = renewal.to_native()
+                elif isinstance(renewal, str):
+                    try:
+                        renewal = datetime.strptime(renewal, "%Y-%m-%d").date()
+                    except (ValueError, TypeError):
+                        renewal = None
+                if isinstance(renewal, date):
+                    detail = f"更新: {renewal.strftime('%Y/%-m/%-d')}"
+                    if (renewal - today).days <= 90:
+                        alert = True
+            cert_pa_nodes.append({
+                "name": cert['name'],
+                "sub": cert.get('grade') or '',
+                "detail": detail,
+                "alert": alert,
+            })
+
+    if public_assistance:
+        for pa in public_assistance:
+            cert_pa_nodes.append({
+                "name": pa['name'],
+                "sub": pa.get('grade') or '',
+                "detail": "",
+            })
+
+    if cert_pa_nodes:
+        categories.append({
+            "name": "手帳・制度",
+            "color": "#00695C", "bg": "#E0F2F1", "icon": "📋",
+            "nodes": cert_pa_nodes
+        })
+
+    return categories
+
+
+def _build_ecomap_html(client_name, client_age, client_blood, categories_data) -> str:
+    """放射状レイアウトのエコマップHTMLを生成"""
+    today = date.today()
+    date_str = f"{today.year}年{today.month}月{today.day}日"
+
+    return ECOMAP_HTML_TEMPLATE.format(
+        client_name=client_name,
+        client_age=client_age or "不明",
+        client_blood=client_blood or "不明",
+        date_str=date_str,
+        client_name_json=json.dumps(client_name, ensure_ascii=False),
+        client_age_json=json.dumps(str(client_age) if client_age else "不明"),
+        client_blood_json=json.dumps(client_blood or "不明"),
+        categories_json=json.dumps(categories_data, ensure_ascii=False),
+    )
+
+
+def _convert_html_to_pdf(html_path: str, pdf_path: str) -> bool:
+    """Chrome headlessでHTMLをPDFに変換"""
+    chrome_paths = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium-browser",
+    ]
+    chrome = None
+    for p in chrome_paths:
+        if os.path.exists(p):
+            chrome = p
+            break
+
+    if not chrome:
+        return False
+
+    try:
+        result = subprocess.run(
+            [
+                chrome,
+                "--headless",
+                "--disable-gpu",
+                "--no-sandbox",
+                f"--print-to-pdf={pdf_path}",
+                "--no-pdf-header-footer",
+                f"file://{html_path}",
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        return os.path.exists(pdf_path)
+    except (subprocess.TimeoutExpired, Exception) as e:
+        log(f"PDF変換エラー: {e}")
+        return False
 
 
 # =============================================================================
