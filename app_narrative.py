@@ -71,8 +71,8 @@ with st.sidebar:
                     st.markdown(f"　・{row['name']}: **{row['ng_count']}件**")
                 else:
                     st.markdown(f"　・{row['name']}: 0件")
-    except:
-        st.error("DB接続エラー")
+    except Exception as e:
+        st.warning("データベース未接続（AI構造化は利用できます）")
     
     st.divider()
     

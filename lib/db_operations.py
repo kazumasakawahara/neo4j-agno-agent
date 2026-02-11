@@ -33,19 +33,47 @@ def get_driver():
     """Neo4jドライバーを取得（シングルトン）"""
     global _driver
     if _driver is None:
-        _driver = GraphDatabase.driver(
-            os.getenv("NEO4J_URI"),
-            auth=(os.getenv("NEO4J_USERNAME"), os.getenv("NEO4J_PASSWORD"))
-        )
+        uri = os.getenv("NEO4J_URI")
+        user = os.getenv("NEO4J_USERNAME")
+        pwd = os.getenv("NEO4J_PASSWORD")
+        if not uri or not user:
+            log("NEO4J_URI または NEO4J_USERNAME が未設定です", "ERROR")
+            return None
+        try:
+            _driver = GraphDatabase.driver(uri, auth=(user, pwd))
+            _driver.verify_connectivity()
+            log(f"Neo4j接続成功: {uri}")
+        except Exception as e:
+            log(f"Neo4j接続失敗: {e}", "ERROR")
+            _driver = None
     return _driver
+
+
+def is_db_available() -> bool:
+    """Neo4jデータベースが利用可能かチェック"""
+    try:
+        driver = get_driver()
+        if driver is None:
+            return False
+        driver.verify_connectivity()
+        return True
+    except Exception:
+        return False
 
 
 def run_query(query, params=None):
     """Cypherクエリ実行ヘルパー"""
-    driver = get_driver()
-    with driver.session() as session:
-        result = session.run(query, params or {})
-        return [record.data() for record in result]
+    try:
+        driver = get_driver()
+        if driver is None:
+            log("ドライバー未初期化のためクエリをスキップ", "WARN")
+            return []
+        with driver.session() as session:
+            result = session.run(query, params or {})
+            return [record.data() for record in result]
+    except Exception as e:
+        log(f"クエリ実行エラー: {e}", "ERROR")
+        return []
 
 
 # =============================================================================
@@ -755,7 +783,8 @@ def get_dashboard_stats():
             WHERE log.date >= date({year: date().year, month: date().month, day: 1})
             RETURN count(log) as count
         """)[0]['count']
-    except Exception:
+    except Exception as e:
+        log(f"月次ログ取得エラー: {e}", "WARN")
         monthly_logs = 0
 
     try:
@@ -766,7 +795,8 @@ def get_dashboard_stats():
               AND cert.nextRenewalDate >= date()
             RETURN count(cert) as count
         """)[0]['count']
-    except Exception:
+    except Exception as e:
+        log(f"期限チェック取得エラー: {e}", "WARN")
         upcoming_renewals = 0
 
     try:
@@ -774,7 +804,8 @@ def get_dashboard_stats():
             MATCH (:Client)-[:MUST_AVOID]->(ng:NgAction)
             RETURN count(ng) as count
         """)[0]['count']
-    except Exception:
+    except Exception as e:
+        log(f"禁忌事項取得エラー: {e}", "WARN")
         total_ng = 0
 
     return {
@@ -809,7 +840,8 @@ def get_upcoming_renewals(days_ahead: int = 90, limit: int = 10) -> list:
             ORDER BY cert.nextRenewalDate ASC
             LIMIT $limit
         """, {"days": days_ahead, "limit": limit})
-    except Exception:
+    except Exception as e:
+        log(f"期限一覧取得エラー: {e}", "WARN")
         return []
 
 
@@ -836,7 +868,8 @@ def get_client_detail(client_name: str) -> dict:
                        renewal: cert.nextRenewalDate
                    }) as certificates
         """, {"name": client_name})
-    except Exception:
+    except Exception as e:
+        log(f"基本情報取得エラー ({client_name}): {e}", "WARN")
         basic = []
 
     # 禁忌事項
@@ -845,7 +878,8 @@ def get_client_detail(client_name: str) -> dict:
             MATCH (c:Client {name: $name})-[:MUST_AVOID]->(ng:NgAction)
             RETURN ng.action as action, ng.reason as reason, ng.riskLevel as risk
         """, {"name": client_name})
-    except Exception:
+    except Exception as e:
+        log(f"禁忌事項取得エラー ({client_name}): {e}", "WARN")
         ng_actions = []
 
     # 効果的ケア
@@ -856,7 +890,8 @@ def get_client_detail(client_name: str) -> dict:
             ORDER BY cp.priority DESC
             LIMIT 5
         """, {"name": client_name})
-    except Exception:
+    except Exception as e:
+        log(f"ケア情報取得エラー ({client_name}): {e}", "WARN")
         care_prefs = []
 
     # 緊急連絡先
@@ -868,7 +903,8 @@ def get_client_detail(client_name: str) -> dict:
             ORDER BY r.rank ASC
             LIMIT 3
         """, {"name": client_name})
-    except Exception:
+    except Exception as e:
+        log(f"緊急連絡先取得エラー ({client_name}): {e}", "WARN")
         key_persons = []
 
     # 最近の支援記録
@@ -880,7 +916,8 @@ def get_client_detail(client_name: str) -> dict:
             ORDER BY log.date DESC
             LIMIT 5
         """, {"name": client_name})
-    except Exception:
+    except Exception as e:
+        log(f"支援記録取得エラー ({client_name}): {e}", "WARN")
         recent_logs = []
 
     return {

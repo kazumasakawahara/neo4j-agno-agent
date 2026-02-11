@@ -301,7 +301,7 @@ def check_safety_compliance(narrative: str, ng_actions: list) -> dict:
         response = agent.run(
             SAFETY_CHECK_PROMPT.format(narrative=narrative, ng_actions=ng_text)
         )
-        log(f"DEBUG: Safety Response: {response.content}")
+        log("安全性チェック完了")
         result = parse_json_from_response(response.content)
         return result if result else {"is_violation": False, "warning": None, "risk_level": "None"}
     except Exception as e:

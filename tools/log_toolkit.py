@@ -76,8 +76,6 @@ class LogToolkit(Toolkit):
             with neo4j.driver.session() as session:
                 result = session.run(cypher, name=client_name, id=log_id, timestamp=timestamp, situation=situation, action=action, effectiveness=effectiveness, embedding=embedding)
                 record = result.single()
-                print(f"DEBUG: Record result: {record}")
-                
             if record:
                 return f"✅ Log recorded (ID: {log_id}) with Memory Embedding."
             return "Failed to save log."

@@ -82,26 +82,29 @@ class SOSResponse(BaseModel):
     success: bool
     message: str
     client_name: str | None = None
+    mock_mode: bool = False
+    sent_message: str | None = None
 
 
 # --- LINE Messaging API ---
 
 # --- LINE Messaging API ---
+_mock_mode = False
+
 async def send_line_message(message: str) -> bool:
-    """
-    Simulate sending LINE message (Mock Mode)
-    TODO: Re-enable actual API call for production.
-    """
+    """LINE Messaging APIでメッセージ送信（モック対応）"""
+    global _mock_mode
     token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
     group_id = os.getenv("LINE_GROUP_ID")
-    
-    # MOCK MODE check
-    if not token or token == "YOUR_ACCESS_TOKEN" or not group_id:
-        print("\n[MOCK_MODE] LINE API Credentials not found. Skipping actual network call.")
-        print(f"[MOCK_MODE] Would send to Group ID: {group_id}")
-        print(f"[MOCK_MODE] Message Content:\n{message}")
-        return True # Return success to prevent API error
 
+    if not token or token == "YOUR_ACCESS_TOKEN" or not group_id:
+        _mock_mode = True
+        print("\n📱 [模擬送信モード] LINE認証情報が未設定のためモック送信します")
+        print(f"📱 [模擬送信] 送信先グループ: {group_id or '未設定'}")
+        print(f"📱 [模擬送信] メッセージ内容:\n{'='*40}\n{message}\n{'='*40}")
+        return True
+
+    _mock_mode = False
     url = "https://api.line.me/v2/bot/message/push"
     headers = {
         "Content-Type": "application/json",
@@ -109,14 +112,9 @@ async def send_line_message(message: str) -> bool:
     }
     payload = {
         "to": group_id,
-        "messages": [
-            {
-                "type": "text",
-                "text": message
-            }
-        ]
+        "messages": [{"type": "text", "text": message}]
     }
-    
+
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=payload, headers=headers)
@@ -125,12 +123,10 @@ async def send_line_message(message: str) -> bool:
                 return True
             else:
                 print(f"❌ LINE送信失敗: {response.status_code} - {response.text}")
-                # Mock Mode fallback for bad credentials
-                print("[MOCK_MODE Fallback] Returning success despite API failure.")
-                return True
+                return False
     except Exception as e:
         print(f"❌ LINE送信エラー: {e}")
-        return True # Mock Mode fallback
+        return False
 
 
 # --- クライアント情報取得 ---
@@ -428,11 +424,13 @@ async def receive_sos(request: SOSRequest):
             message += f"\n📍 現在地:\nhttps://www.google.com/maps?q={request.latitude},{request.longitude}"
         
         await send_line_message(message)
-        
+
         return SOSResponse(
             success=True,
             message="SOSを送信しました（未登録ユーザー）",
-            client_name=None
+            client_name=None,
+            mock_mode=_mock_mode,
+            sent_message=message
         )
     
     client_name = client_info['name']
@@ -473,7 +471,9 @@ async def receive_sos(request: SOSRequest):
         return SOSResponse(
             success=True,
             message="SOSを送信しました",
-            client_name=client_name
+            client_name=client_name,
+            mock_mode=_mock_mode,
+            sent_message=message
         )
     else:
         raise HTTPException(

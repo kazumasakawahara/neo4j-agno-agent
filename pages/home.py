@@ -12,6 +12,7 @@ from lib.db_operations import (
     get_client_stats,
     get_dashboard_stats,
     get_upcoming_renewals,
+    is_db_available,
 )
 
 # =============================================================================
@@ -104,10 +105,29 @@ st.markdown("""
 # =============================================================================
 # ヘッダー
 # =============================================================================
+# デモモードバナー
+if os.getenv("DEMO_MODE", "").lower() == "true":
+    st.markdown("""
+    <div style="background: #FFF8E1; border: 1px solid #FFC107; border-radius: 8px;
+                padding: 8px 16px; margin-bottom: 16px; text-align: center; font-size: 0.9rem;">
+        🎓 デモ環境 — 表示されているデータは架空のものです
+    </div>
+    """, unsafe_allow_html=True)
+
 st.markdown("## 支援ダッシュボード")
 st.caption("3つのワークレイヤーで効果的に支援を進めましょう")
 
 st.divider()
+
+# =============================================================================
+# DB接続チェック
+# =============================================================================
+db_available = is_db_available()
+
+if not db_available:
+    st.warning("データベースに接続できません。Neo4jが起動しているか確認してください。")
+    if st.button("🔄 再接続を試みる"):
+        st.rerun()
 
 # =============================================================================
 # 統計カード
@@ -119,7 +139,7 @@ try:
     monthly_logs = dash_stats.get('monthly_logs', 0)
     upcoming_count = dash_stats.get('upcoming_renewals', 0)
     total_ng = dash_stats.get('total_ng_actions', 0)
-except Exception:
+except Exception as e:
     client_count = monthly_logs = upcoming_count = total_ng = 0
 
 col1, col2, col3, col4 = st.columns(4)
