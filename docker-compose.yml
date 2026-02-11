@@ -1,19 +1,19 @@
 services:
-  app:
-    build: .
-    container_name: support-agent-app
-    ports:
-      - "8501:8501"
-    env_file:
-      - .env
-    environment:
-      - NEO4J_URI=bolt://neo4j:7687
-    depends_on:
-      - neo4j
-    volumes:
-      - ./:/app
-      - /app/.venv
-    restart: always
+  # app:
+  #   build: .
+  #   container_name: support-agent-app
+  #   ports:
+  #     - "8501:8501"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     - NEO4J_URI=bolt://neo4j:7687
+  #   depends_on:
+  #     - neo4j
+  #   volumes:
+  #     - ./:/app
+  #     - /app/.venv
+  #   restart: always
 
   neo4j:
     image: neo4j:5.15-community
