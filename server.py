@@ -1791,6 +1791,303 @@ def update_provider_availability(
 
 
 # =============================================================================
+# ツール20: エコマップ（支援ネットワーク図）生成
+# =============================================================================
+
+@mcp.tool()
+def generate_ecomap(client_name: str, format: str = "mermaid") -> str:
+    """
+    クライアントのエコマップ（支援ネットワーク図）を生成します。
+
+    Neo4jからクライアントを中心とした支援ネットワーク情報を取得し、
+    Mermaid形式の図として出力します。Claude Desktopでそのまま
+    表示・コピーできます。
+
+    図に含まれる情報：
+    - 家族・キーパーソン（緊急連絡先の優先順位つき）
+    - 後見人・法的代理人
+    - 医療機関（かかりつけ医）
+    - 支援者（ヘルパー・相談員等）
+    - 利用中の福祉サービス事業所
+
+    Args:
+        client_name: クライアントの名前（部分一致可）
+        format: 出力形式（'mermaid' または 'text'）
+
+    Returns:
+        エコマップ（Mermaid図またはテキスト形式）
+
+    使用例:
+        - 「田中太郎さんのエコマップを作成して」
+        - 「佐藤花子さんの支援ネットワーク図を見せて」
+    """
+    try:
+        log(f"エコマップ生成: {client_name}")
+
+        query = """
+        MATCH (c:Client)
+        WHERE c.name CONTAINS $name
+
+        // キーパーソン（家族・緊急連絡先）
+        OPTIONAL MATCH (c)-[kpRel:HAS_KEY_PERSON]->(kp:KeyPerson)
+        WITH c, collect(DISTINCT {
+            name: kp.name,
+            relationship: kp.relationship,
+            phone: kp.phone,
+            role: kp.role,
+            rank: kpRel.rank
+        }) AS keyPersons
+
+        // 後見人
+        OPTIONAL MATCH (c)-[:HAS_LEGAL_REP]->(g:Guardian)
+        WITH c, keyPersons, collect(DISTINCT {
+            name: g.name,
+            type: g.type,
+            phone: g.phone
+        }) AS guardians
+
+        // 医療機関
+        OPTIONAL MATCH (c)-[:TREATED_AT]->(hosp:Hospital)
+        WITH c, keyPersons, guardians, collect(DISTINCT {
+            name: hosp.name,
+            specialty: hosp.specialty,
+            phone: hosp.phone,
+            doctor: hosp.doctor
+        }) AS hospitals
+
+        // 支援者
+        OPTIONAL MATCH (c)-[:SUPPORTED_BY]->(s:Supporter)
+        WITH c, keyPersons, guardians, hospitals, collect(DISTINCT {
+            name: s.name,
+            role: s.role,
+            organization: s.organization
+        }) AS supporters
+
+        // 利用中の福祉サービス事業所
+        OPTIONAL MATCH (c)-[:USES_SERVICE]->(sp:ServiceProvider)
+        WITH c, keyPersons, guardians, hospitals, supporters, collect(DISTINCT {
+            name: sp.name,
+            serviceType: sp.serviceType,
+            phone: sp.phone
+        }) AS providers
+
+        RETURN
+            c.name AS clientName,
+            c.dob AS dob,
+            keyPersons, guardians, hospitals, supporters, providers
+        """
+
+        with driver.session() as session:
+            result = session.run(query, name=client_name)
+            data = [record.data() for record in result]
+
+            if not data or not data[0].get('clientName'):
+                return f"❌ '{client_name}' に該当するクライアントが見つかりませんでした。"
+
+            record = data[0]
+            name = record['clientName']
+            key_persons = [x for x in record.get('keyPersons', []) if x.get('name')]
+            guardians = [x for x in record.get('guardians', []) if x.get('name')]
+            hospitals = [x for x in record.get('hospitals', []) if x.get('name')]
+            supporters = [x for x in record.get('supporters', []) if x.get('name')]
+            providers = [x for x in record.get('providers', []) if x.get('name')]
+
+            # 優先順位でソート
+            key_persons.sort(key=lambda x: x.get('rank') or 99)
+
+            if format == "text":
+                return _build_ecomap_text(name, key_persons, guardians, hospitals, supporters, providers)
+            else:
+                return _build_ecomap_mermaid(name, key_persons, guardians, hospitals, supporters, providers)
+
+    except Exception as e:
+        log(f"エコマップ生成エラー: {e}")
+        return f"エラーが発生しました: {e}"
+
+
+def _build_ecomap_mermaid(name, key_persons, guardians, hospitals, supporters, providers) -> str:
+    """Mermaid形式のエコマップを構築"""
+    lines = []
+    lines.append("```mermaid")
+    lines.append("graph TD")
+    lines.append(f'    CLIENT(("🧑 {name}"))')
+    lines.append("")
+
+    # スタイル定義
+    lines.append("    %% スタイル定義")
+    lines.append("    classDef client fill:#E3F2FD,stroke:#1565C0,stroke-width:3px,color:#0D47A1")
+    lines.append("    classDef family fill:#FFF3E0,stroke:#E65100,stroke-width:2px,color:#BF360C")
+    lines.append("    classDef legal fill:#F3E5F5,stroke:#6A1B9A,stroke-width:2px,color:#4A148C")
+    lines.append("    classDef medical fill:#FFEBEE,stroke:#C62828,stroke-width:2px,color:#B71C1C")
+    lines.append("    classDef support fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20")
+    lines.append("    classDef service fill:#E0F7FA,stroke:#00695C,stroke-width:2px,color:#004D40")
+    lines.append("")
+
+    node_id = 0
+
+    # キーパーソン（家族・緊急連絡先）
+    if key_persons:
+        lines.append("    %% 家族・キーパーソン")
+        for kp in key_persons:
+            node_id += 1
+            rel = kp.get('relationship') or ''
+            role = kp.get('role') or ''
+            rank = kp.get('rank')
+            label_parts = [kp['name']]
+            if rel:
+                label_parts.append(f"({rel})")
+            if role:
+                label_parts.append(f"[{role}]")
+            rank_label = f"緊急連絡{rank}位" if rank else "家族"
+            label = " ".join(label_parts)
+            lines.append(f'    KP{node_id}["👨‍👩‍👦 {label}"]')
+            lines.append(f'    CLIENT -- "{rank_label}" --> KP{node_id}')
+            lines.append(f"    class KP{node_id} family")
+        lines.append("")
+
+    # 後見人
+    if guardians:
+        lines.append("    %% 後見人・法的代理人")
+        for g in guardians:
+            node_id += 1
+            gtype = g.get('type') or '後見人'
+            lines.append(f'    G{node_id}["⚖️ {g["name"]}"]')
+            lines.append(f'    CLIENT -- "{gtype}" --> G{node_id}')
+            lines.append(f"    class G{node_id} legal")
+        lines.append("")
+
+    # 医療機関
+    if hospitals:
+        lines.append("    %% 医療機関")
+        for h in hospitals:
+            node_id += 1
+            spec = h.get('specialty') or ''
+            doctor = h.get('doctor') or ''
+            label = h['name']
+            if spec:
+                label += f"\\n{spec}"
+            if doctor:
+                label += f"\\n{doctor}先生"
+            lines.append(f'    H{node_id}["🏥 {label}"]')
+            lines.append(f'    CLIENT -- "かかりつけ" --> H{node_id}')
+            lines.append(f"    class H{node_id} medical")
+        lines.append("")
+
+    # 支援者
+    if supporters:
+        lines.append("    %% 支援者")
+        for s in supporters:
+            node_id += 1
+            role = s.get('role') or ''
+            org = s.get('organization') or ''
+            label = s['name']
+            if role:
+                label += f"\\n{role}"
+            if org:
+                label += f"\\n({org})"
+            lines.append(f'    S{node_id}["🤝 {label}"]')
+            lines.append(f'    CLIENT -- "支援" --> S{node_id}')
+            lines.append(f"    class S{node_id} support")
+        lines.append("")
+
+    # 福祉サービス事業所
+    if providers:
+        lines.append("    %% 福祉サービス事業所")
+        for p in providers:
+            node_id += 1
+            stype = p.get('serviceType') or ''
+            label = p['name']
+            if stype:
+                label += f"\\n{stype}"
+            lines.append(f'    P{node_id}["🏢 {label}"]')
+            lines.append(f'    CLIENT -- "利用中" --> P{node_id}')
+            lines.append(f"    class P{node_id} service")
+        lines.append("")
+
+    lines.append("    class CLIENT client")
+    lines.append("```")
+
+    # ネットワーク情報が空の場合
+    total = len(key_persons) + len(guardians) + len(hospitals) + len(supporters) + len(providers)
+    if total == 0:
+        return json.dumps({
+            "⚠️ エコマップ": f"{name}さんのネットワーク情報がまだ登録されていません。",
+            "💡 ヒント": "キーパーソン、後見人、医療機関、支援者の情報を登録すると、エコマップを生成できます。"
+        }, ensure_ascii=False, indent=2)
+
+    # 凡例と統計を付加
+    summary = {
+        "エコマップ": f"{name}さんの支援ネットワーク",
+        "ネットワーク構成": {
+            "👨‍👩‍👦 家族・キーパーソン": f"{len(key_persons)}名",
+            "⚖️ 後見人・法的代理人": f"{len(guardians)}名",
+            "🏥 医療機関": f"{len(hospitals)}箇所",
+            "🤝 支援者": f"{len(supporters)}名",
+            "🏢 福祉サービス事業所": f"{len(providers)}箇所"
+        },
+        "Mermaid図": "\n".join(lines)
+    }
+
+    return json.dumps(summary, ensure_ascii=False, indent=2, default=str)
+
+
+def _build_ecomap_text(name, key_persons, guardians, hospitals, supporters, providers) -> str:
+    """テキスト形式のエコマップを構築"""
+    sections = []
+    sections.append(f"═══ {name}さんのエコマップ（支援ネットワーク図）═══\n")
+
+    total = len(key_persons) + len(guardians) + len(hospitals) + len(supporters) + len(providers)
+    if total == 0:
+        sections.append("⚠️ ネットワーク情報がまだ登録されていません。")
+        sections.append("💡 キーパーソン、後見人、医療機関、支援者を登録するとエコマップを生成できます。")
+        return "\n".join(sections)
+
+    if key_persons:
+        sections.append("【👨‍👩‍👦 家族・キーパーソン】")
+        for kp in key_persons:
+            rank = f"[緊急連絡{kp['rank']}位]" if kp.get('rank') else ""
+            rel = f"({kp['relationship']})" if kp.get('relationship') else ""
+            phone = f" TEL:{kp['phone']}" if kp.get('phone') else ""
+            sections.append(f"  {rank} {kp['name']} {rel}{phone}")
+        sections.append("")
+
+    if guardians:
+        sections.append("【⚖️ 後見人・法的代理人】")
+        for g in guardians:
+            gtype = g.get('type') or '後見人'
+            phone = f" TEL:{g['phone']}" if g.get('phone') else ""
+            sections.append(f"  [{gtype}] {g['name']}{phone}")
+        sections.append("")
+
+    if hospitals:
+        sections.append("【🏥 医療機関】")
+        for h in hospitals:
+            spec = f" ({h['specialty']})" if h.get('specialty') else ""
+            doctor = f" 担当:{h['doctor']}先生" if h.get('doctor') else ""
+            phone = f" TEL:{h['phone']}" if h.get('phone') else ""
+            sections.append(f"  {h['name']}{spec}{doctor}{phone}")
+        sections.append("")
+
+    if supporters:
+        sections.append("【🤝 支援者】")
+        for s in supporters:
+            role = f" ({s['role']})" if s.get('role') else ""
+            org = f" [{s['organization']}]" if s.get('organization') else ""
+            sections.append(f"  {s['name']}{role}{org}")
+        sections.append("")
+
+    if providers:
+        sections.append("【🏢 福祉サービス事業所】")
+        for p in providers:
+            stype = f" ({p['serviceType']})" if p.get('serviceType') else ""
+            phone = f" TEL:{p['phone']}" if p.get('phone') else ""
+            sections.append(f"  {p['name']}{stype}{phone}")
+        sections.append("")
+
+    return "\n".join(sections)
+
+
+# =============================================================================
 # メイン実行
 # =============================================================================
 
