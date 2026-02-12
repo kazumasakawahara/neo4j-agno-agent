@@ -69,12 +69,13 @@ See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
    - `workflows/`: Visit Preparation, Resilience Report, Renewal Check
    - `base.py`, `unified_support_agent.py`: Agno/Gemini agent (used by app_ui.py)
 
-6. **Skills** (`~/.claude/skills/`):
+6. **Skills** (`claude-skills/` → `~/.claude/skills/` via symlink):
    - `neo4j-support-db/`: 障害福祉DB用Cypherテンプレート（8種、port 7687）
    - `livelihood-support/`: 生活困窮者DB用Cypherテンプレート（12種、port 7688）
    - `provider-search/`: 事業所検索・口コミ用Cypherテンプレート（9種、port 7687）
    - `emergency-protocol/`: 緊急時対応プロトコル（DB非依存）
    - `ecomap-generator/`: エコマップ生成（Mermaid/SVG）
+   - Install: `./setup.sh --skills` creates symlinks from repo to `~/.claude/skills/`
 
 ### AI Models
 
@@ -224,9 +225,20 @@ neo4j-agno-agent/
 ├── mobile/                 # Mobile narrative input system
 ├── sos/                    # Emergency notification system
 ├── scripts/                # Utility scripts (backup.sh)
+├── claude-skills/          # Claude Desktop Skills (bundled)
+│   ├── neo4j-support-db/   # 障害福祉DB (4-pillar, port 7687)
+│   ├── livelihood-support/ # 生活困窮者DB (7-pillar, port 7688)
+│   ├── provider-search/    # 事業所検索・口コミ (port 7687)
+│   ├── emergency-protocol/ # 緊急時対応プロトコル (read-only)
+│   └── ecomap-generator/   # エコマップ生成 (Mermaid/SVG)
+├── configs/                # Claude Desktop config templates
+│   ├── claude_desktop_config.skills.json  # Skills方式（推奨）
+│   └── claude_desktop_config.mcp.json     # レガシーMCP方式
 ├── docs/                   # Documentation
-│   ├── ADVANCED_USAGE.md   # Claude Desktop setup & usage
+│   ├── QUICK_START.md      # Quick start guide (5-min setup)
+│   ├── ADVANCED_USAGE.md   # Skills detailed usage & prompts
 │   └── DEV_NOTES.md        # Developer notes & troubleshooting
+├── setup.sh                # Setup script (Neo4j + Skills install)
 ├── archive/                # Archived legacy files
 ├── docker-compose.yml      # Neo4j container config
 └── pyproject.toml          # Dependencies (uv-managed)
