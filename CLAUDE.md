@@ -36,7 +36,7 @@ See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
 |-------|------|---------|-------|
 | 1 | `app_narrative.py` (Streamlit) | Initial registration, bulk data entry | Blue #1565C0 |
 | 2 | `app_quick_log.py` (Streamlit) | Quick daily logging (30 seconds) | Orange #E65100 |
-| 3 | Claude Desktop + MCP | Analysis, proposals, complex operations | Purple #6A1B9A |
+| 3 | Claude Desktop + Skills + Neo4j MCP | Analysis, proposals, complex operations | Purple #6A1B9A |
 
 ### System Components
 
@@ -64,15 +64,22 @@ See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
 
 5. **Agent Protocols** (`agents/`):
    - `MANIFESTO.md`: Unified manifesto v4.0 (5 values, 7 pillars, 4 AI rules)
-   - `ROUTING.md`: Guide for choosing between MCP servers
+   - `ROUTING.md`: Guide for choosing between skills and Neo4j MCP
    - `protocols/`: Emergency, Parent Down, Onboarding, Handover
    - `workflows/`: Visit Preparation, Resilience Report, Renewal Check
    - `base.py`, `unified_support_agent.py`: Agno/Gemini agent (used by app_ui.py)
 
+6. **Skills** (`~/.claude/skills/`):
+   - `neo4j-support-db/`: 障害福祉DB用Cypherテンプレート（8種、port 7687）
+   - `livelihood-support/`: 生活困窮者DB用Cypherテンプレート（12種、port 7688）
+   - `provider-search/`: 事業所検索・口コミ用Cypherテンプレート（9種、port 7687）
+   - `emergency-protocol/`: 緊急時対応プロトコル（DB非依存）
+   - `ecomap-generator/`: エコマップ生成（Mermaid/SVG）
+
 ### AI Models
 
 - **Gemini 2.0 Flash**: Narrative text structuring (extraction) via `lib/ai_extractor.py`
-- **Claude Desktop**: Natural language database queries via MCP (`server.py`)
+- **Claude Desktop**: Natural language database queries via Skills + Neo4j MCP (see `agents/ROUTING.md`)
 
 ## Common Development Tasks
 
@@ -132,13 +139,23 @@ result = run_query("MATCH (c:Client) RETURN c.name LIMIT 10")
 - `Panic`: Medium priority (panic triggers)
 - `Discomfort`: Lower priority (discomfort causes)
 
-### MCP Server Tools (server.py)
+### Skills & Neo4j MCP (Layer 3)
 
-Two MCP servers are available:
+Five skills provide Cypher templates executed via the generic neo4j MCP:
+
+| Skill | Neo4j Port | Templates | Purpose |
+|-------|-----------|-----------|---------|
+| neo4j-support-db | 7687 | 8 read | 障害福祉クライアント管理 |
+| livelihood-support | 7688 | 12 read | 生活困窮者自立支援 |
+| provider-search | 7687 | 6 read + 3 write | 事業所検索・口コミ |
+| emergency-protocol | N/A | N/A | 緊急時プロトコル |
+| ecomap-generator | N/A | N/A | エコマップ生成 |
+
+Legacy MCP servers (`server.py`) are still available but skills are preferred:
 - `support-db`: Disability care support (4-pillar model)
 - `livelihood-support-db`: Livelihood support (7-pillar model, includes financial safety)
 
-See `agents/ROUTING.md` for guidance on choosing between them.
+See `agents/ROUTING.md` for guidance on choosing between skills.
 
 ## Database Schema Notes
 
