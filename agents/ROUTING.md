@@ -191,7 +191,7 @@
 | support-db | localhost:7687 | localhost:7474 | neo4j-support-db, provider-search |
 | livelihood-support | localhost:7688 | localhost:7475 | livelihood-support |
 
-**neo4j MCP のデフォルト接続先は port 7687（support-db）。** livelihood-support のクエリは専用MCPツール（`livelihood-support-db:run_cypher_query`）を使うか、接続先を切り替える必要がある。
+**`neo4j` MCP のデフォルト接続先は port 7687（support-db）。** livelihood-support のクエリは `neo4j-livelihood` MCP（port 7688）を使用すること。claude_desktop_config.json に両方のMCPが設定済み。
 
 ---
 

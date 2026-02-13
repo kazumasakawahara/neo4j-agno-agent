@@ -19,9 +19,7 @@
 
 ### ステップ1：クライアント全体像の取得
 
-```
-support-db:get_client_profile(client_name="クライアント名")
-```
+→ `neo4j-support-db` スキルのテンプレート2（クライアントプロフィール）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 7本柱の全情報を把握する。特に以下に注目：
 - 親（Relative）の情報と健康状態
@@ -30,8 +28,8 @@ support-db:get_client_profile(client_name="クライアント名")
 
 ### ステップ2：親のCareRole一覧の取得
 
-```
-support-db:run_cypher_query(cypher="""
+以下のCypherを `neo4j` MCP の `read_neo4j_cypher` で実行:
+```cypher
 MATCH (c:Client {name: 'クライアント名'})<-[:IS_PARENT_OF|FAMILY_OF]-(r:Relative)
 OPTIONAL MATCH (r)-[:PERFORMS]->(cr:CareRole)
 OPTIONAL MATCH (cr)-[:CAN_BE_PERFORMED_BY]->(alt)
@@ -39,7 +37,6 @@ RETURN r.name AS 親, r.healthStatus AS 健康状態, r.age AS 年齢,
        cr.name AS タスク, cr.frequency AS 頻度,
        labels(alt) AS 代替種類, alt.name AS 代替名
 ORDER BY r.name, cr.priority DESC
-""")
 ```
 
 ### ステップ3：代替手段のカバー率分析
@@ -56,30 +53,17 @@ ORDER BY r.name, cr.priority DESC
 
 未カバーのCareRoleに対して、福祉サービスの候補を検索する。
 
-```
-support-db:search_service_providers(
-    service_type="対応するサービス種類",
-    city="地域名",
-    availability="空きあり",
-    target_disability="対象障害種別"
-)
-```
+→ `provider-search` スキルのテンプレート1（事業所検索）を `neo4j` MCP の `read_neo4j_cypher` で実行。
+  条件: service_type, city, availability, target_disability で絞り込み。
 
 口コミ情報がある場合は併せて確認：
-```
-support-db:search_providers_by_feedback(
-    category="関連カテゴリ",
-    rating="◎良い"
-)
-```
+→ `provider-search` スキルのテンプレート6（口コミ検索）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 ### ステップ5：過去のナラティブからの洞察
 
 過去の支援記録から、親の機能に関連する情報を抽出する。
 
-```
-support-db:get_support_logs(client_name="クライアント名", limit=30)
-```
+→ `neo4j-support-db` スキルのテンプレート5（支援記録取得）を `neo4j` MCP の `read_neo4j_cypher` で実行（limit=30）。
 
 例えば「食事準備」のCareRoleが未カバーの場合：
 - 過去の記録から食事に関するこだわり（特定の味付け、避けるべき食材）を抽出
@@ -157,8 +141,6 @@ support-db:get_support_logs(client_name="クライアント名", limit=30)
 
 レポートをファイルとして出力する場合：
 
-```
-support-db:generate_report_file(client_name="クライアント名", file_type="pdf")
-```
+→ `html-to-pdf` スキルを使用してPDF出力、または `xlsx` スキルを使用してExcel出力。
 
-※ 上記は基本プロフィールのPDF出力。レジリエンス・レポートの完全版は、Markdownから html-to-pdf スキルで変換する方法も有効。
+※ レジリエンス・レポートの完全版は、Markdownから `html-to-pdf` スキルでHTML経由でPDFに変換する方法が推奨。

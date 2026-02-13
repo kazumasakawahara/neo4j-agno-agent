@@ -152,10 +152,6 @@ Five skills provide Cypher templates executed via the generic neo4j MCP:
 | emergency-protocol | N/A | N/A | 緊急時プロトコル |
 | ecomap-generator | N/A | N/A | エコマップ生成 |
 
-Legacy MCP servers (`server.py`) are still available but skills are preferred:
-- `support-db`: Disability care support (4-pillar model)
-- `livelihood-support-db`: Livelihood support (7-pillar model, includes financial safety)
-
 See `agents/ROUTING.md` for guidance on choosing between skills.
 
 ## Database Schema Notes
@@ -179,7 +175,7 @@ See `agents/ROUTING.md` for guidance on choosing between skills.
 - `:Certificate`: 手帳・受給者証 with `nextRenewalDate`
 - `:PublicAssistance`: 公的扶助
 
-**Financial Safety** (livelihood-support-db):
+**Financial Safety** (livelihood-support, port 7688):
 - `:EconomicRisk`: Economic exploitation risks
 - `:MoneyManagement`: Financial management capability records
 

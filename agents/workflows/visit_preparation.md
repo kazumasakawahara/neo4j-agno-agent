@@ -16,29 +16,23 @@
 
 ### 1. 訪問前ブリーフィングの取得
 
-**livelihood-support-dbのクライアントの場合（推奨）:**
-```
-livelihood-support-db:get_visit_briefing_tool(recipient_name="クライアント名")
-```
+**生活保護受給者の場合（port 7688）:**
+→ `livelihood-support` スキルのテンプレート9（訪問前ブリーフィング）を `neo4j-livelihood` MCP の `read_neo4j_cypher` で実行。
 
-このツールは以下を優先順位付きで返す：
+このテンプレートは以下を優先順位付きで返す：
 1. ⚠️ 避けるべき関わり方（NgApproach） ← 最重要
 2. ⚠️ 経済的リスク（EconomicRisk）
 3. 🏥 精神疾患の状況
 4. 💰 金銭管理状況と支援サービス
 5. ✅ 効果的だった関わり方
 
-**support-dbのクライアントの場合:**
-```
-support-db:search_emergency_info(client_name="クライアント名")
-```
+**障害福祉クライアントの場合（port 7687）:**
+→ `neo4j-support-db` スキルのテンプレート2（クライアントプロフィール）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 ### 2. 最近の支援記録の確認
 
 直近の支援状況を把握する。
-```
-support-db:get_support_logs(client_name="クライアント名", limit=5)
-```
+→ `neo4j-support-db` スキルのテンプレート5（支援記録取得）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 確認ポイント：
 - 前回の訪問で何があったか
@@ -47,9 +41,7 @@ support-db:get_support_logs(client_name="クライアント名", limit=5)
 
 ### 3. 効果的な対応パターンの確認
 
-```
-support-db:discover_care_patterns(client_name="クライアント名")
-```
+→ `neo4j-support-db` スキルのテンプレート6（ケアパターン発見）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 特に訪問の目的に関連するパターンを抽出する。例：
 - 同行支援（外出）→ 外出時に効果的だった対応
@@ -58,9 +50,7 @@ support-db:discover_care_patterns(client_name="クライアント名")
 
 ### 4. 更新期限の確認（訪問時に手続きが必要な場合）
 
-```
-support-db:check_renewal_dates(client_name="クライアント名")
-```
+→ `neo4j-support-db` スキルのテンプレート4（更新期限チェック）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 手帳や受給者証の更新が近い場合、訪問時に書類を準備する。
 
@@ -110,8 +100,8 @@ support-db:check_renewal_dates(client_name="クライアント名")
 入力: 「佐々木まりさんの動向支援でデパートに行くことになりました。気を付けることを教えて下さい。」
 
 実行:
-1. search_emergency_info(client_name="佐々木まり") → 禁忌事項・推奨ケア
-2. get_support_logs(client_name="佐々木まり", limit=5) → 最近の状況
-3. discover_care_patterns(client_name="佐々木まり") → 外出時のパターン
+1. neo4j-support-db テンプレート2 → 禁忌事項・推奨ケア（neo4j MCP の read_neo4j_cypher）
+2. neo4j-support-db テンプレート5 → 最近の支援記録（limit=5）
+3. neo4j-support-db テンプレート6 → 外出時のケアパターン
 4. ブリーフィング形式で出力
 ```

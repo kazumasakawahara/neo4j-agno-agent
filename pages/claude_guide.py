@@ -295,7 +295,7 @@ st.markdown("### 💡 Claude Desktopの設定方法")
 st.markdown("""
 1. **Claude Desktop** アプリを開く
 2. 設定から **MCP サーバー** を有効化
-3. `support-db` と `livelihood-support-db` の接続を確認
+3. `neo4j` MCP と `neo4j-livelihood` MCP の接続を確認
 4. 上のプロンプトをコピーして会話を始める
 
 MCP接続の詳細は、プロジェクト内の `README.md` を参照してください。

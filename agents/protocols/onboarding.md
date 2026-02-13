@@ -19,9 +19,7 @@
 
 まず、既に登録済みでないか確認する。
 
-```
-support-db:list_clients()
-```
+→ `neo4j-support-db` スキルのテンプレート1（クライアント一覧）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 名前の類似（漢字違い、旧姓等）にも注意する。
 
@@ -59,62 +57,57 @@ support-db:list_clients()
 
 #### 優先度：通常 - 支援開始後に順次
 
-**第6の柱：金銭的安全 (Financial Safety)** ※livelihood-support-db
+**第6の柱：金銭的安全 (Financial Safety)** ※livelihood-supportスキル
 - 金銭管理の状況
 - 経済的リスクの有無
 
-**第7の柱：多機関連携 (Multi-Agency Collaboration)** ※livelihood-support-db
+**第7の柱：多機関連携 (Multi-Agency Collaboration)** ※livelihood-supportスキル
 - 連携している支援機関の情報
 
 ### ステップ3：データ登録
 
-収集した情報をMCPツールを通じて登録する。
+収集した情報をSkillのCypherテンプレートを参考に、`neo4j` MCP の `write_neo4j_cypher` で登録する。
 
-**基本情報（support-db）:**
-```
-support-db:run_cypher_query(cypher="""
+**基本情報（port 7687）:**
+```cypher
 MERGE (c:Client {name: '氏名'})
 SET c.dob = date('YYYY-MM-DD'),
     c.bloodType = '血液型',
     c.gender = '性別'
 RETURN c
-""")
 ```
 
 **禁忌事項の登録:**
-```
-support-db:run_cypher_query(cypher="""
+```cypher
 MATCH (c:Client {name: '氏名'})
 MERGE (ng:NgAction {action: '具体的な禁忌行動'})
 SET ng.reason = '理由', ng.riskLevel = 'リスクレベル'
 MERGE (c)-[:MUST_AVOID]->(ng)
-""")
 ```
 
 **キーパーソンの登録:**
-```
-support-db:run_cypher_query(cypher="""
+```cypher
 MATCH (c:Client {name: '氏名'})
 MERGE (kp:KeyPerson {name: '連絡先氏名'})
 SET kp.phone = '電話番号', kp.relationship = '続柄', kp.role = '役割'
 MERGE (c)-[:HAS_KEY_PERSON {rank: 1}]->(kp)
-""")
 ```
 
-**livelihood-support-db固有の情報:**
-- `register_ng_approach_tool` - 避けるべき関わり方
-- `register_effective_approach_tool` - 効果的な関わり方
-- `register_economic_risk_tool` - 経済的リスク
-- `register_money_management_tool` - 金銭管理状況
-- `register_support_org_tool` - 連携支援機関
+→ 上記は `neo4j` MCP の `write_neo4j_cypher` で実行する。
+
+**livelihood-supportスキル固有の情報（port 7688）:**
+以下の情報は `livelihood-support` スキルのCypherテンプレートを参考に、`neo4j-livelihood` MCP の `write_neo4j_cypher` で登録する。
+- NgApproach（避けるべき関わり方）→ テンプレート5
+- EffectiveApproach（効果的な関わり方）→ テンプレート6
+- EconomicRisk（経済的リスク）→ テンプレート7
+- MoneyManagement（金銭管理状況）→ テンプレート8
+- SupportOrg（連携支援機関）→ テンプレート11
 
 ### ステップ4：登録内容の確認
 
 登録した内容を確認する。
 
-```
-support-db:get_client_profile(client_name="氏名")
-```
+→ `neo4j-support-db` スキルのテンプレート2（クライアントプロフィール）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 不足している情報を一覧で提示し、次回の面接で確認すべき項目をリストアップする。
 
@@ -145,7 +138,7 @@ support-db:get_client_profile(client_name="氏名")
 - 緊急フラグ: 母の入院予定あり → Parent Down Trigger の事前準備
 ```
 
-支援記録の登録には `add_support_log` を使い、AIによる自動抽出を活用する。
+支援記録の登録には `neo4j-support-db` スキルのテンプレート（支援記録登録）を参考に、`neo4j` MCP の `write_neo4j_cypher` で登録し、AIによる自動抽出を活用する。
 
 ---
 

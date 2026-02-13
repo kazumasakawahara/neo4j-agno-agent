@@ -17,17 +17,13 @@
 
 ### ステップ1：緊急情報の即時取得（0秒〜30秒）
 
-対象クライアントを特定し、適切なMCPサーバーの `search_emergency_info` を呼び出す。
+対象クライアントを特定し、適切なSkillのCypherテンプレートを使用して緊急情報を取得する。
 
-**障害福祉クライアントの場合:**
-```
-support-db:search_emergency_info(client_name="対象者名", situation="状況キーワード")
-```
+**障害福祉クライアントの場合（port 7687）:**
+→ `neo4j-support-db` スキルのテンプレート2（クライアントプロフィール）を使用し、`neo4j` MCP の `read_neo4j_cypher` で実行。
 
-**生活保護受給者の場合:**
-```
-livelihood-support-db:search_emergency_info(client_name="対象者名", situation="状況キーワード")
-```
+**生活保護受給者の場合（port 7688）:**
+→ `livelihood-support` スキルのテンプレート9（訪問前ブリーフィング）を使用し、`neo4j-livelihood` MCP の `read_neo4j_cypher` で実行。
 
 ### ステップ2：情報の優先順位表示
 
@@ -38,7 +34,7 @@ livelihood-support-db:search_emergency_info(client_name="対象者名", situatio
    - 二次被害を防ぐため、これが最優先
    - 表示形式: 赤字強調、⚠️アイコン付き
 
-2. **🛡️ 経済的リスク（EconomicRisk）** ※livelihood-support-dbのみ
+2. **🛡️ 経済的リスク（EconomicRisk）** ※livelihood-supportスキルのみ
    - 搾取の兆候がある場合に警告
    - 該当なしの場合はスキップ
 
@@ -61,16 +57,12 @@ livelihood-support-db:search_emergency_info(client_name="対象者名", situatio
 緊急情報を提示した後、状況に応じて以下を判断する。
 
 - **パニック発作の場合:** 過去の支援記録から効果的だった対応パターンを検索
-  ```
-  discover_care_patterns(client_name="対象者名")
-  ```
+  → `neo4j-support-db` スキルのテンプレート6（ケアパターン発見）を `neo4j` MCP の `read_neo4j_cypher` で実行
 
 - **親の急病・入院の場合:** → `protocols/parent_down.md` に移行
 
 - **経済的搾取の疑いがある場合:** → 経済リスクの詳細を確認
-  ```
-  livelihood-support-db:get_client_profile(client_name="対象者名")
-  ```
+  → `livelihood-support` スキルのテンプレート2a〜2d（クライアントプロフィール）を `neo4j-livelihood` MCP の `read_neo4j_cypher` で実行
 
 ---
 

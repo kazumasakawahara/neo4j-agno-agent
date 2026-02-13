@@ -19,12 +19,10 @@
 
 対象クライアントの包括的な引き継ぎ資料を生成する。
 
-**livelihood-support-dbのクライアントの場合（推奨）:**
-```
-livelihood-support-db:get_handover_summary_tool(recipient_name="クライアント名")
-```
+**生活保護受給者の場合（port 7688）:**
+→ `livelihood-support` スキルのテンプレート10（引き継ぎサマリー）を `neo4j-livelihood` MCP の `read_neo4j_cypher` で実行。
 
-このツールは以下の情報を優先順位付きで提供する：
+このテンプレートは以下の情報を優先順位付きで提供する：
 1. ⚠️ 避けるべき関わり方（NgApproach） ← 新担当者が最初に知るべき
 2. ⚠️ 経済的リスク（EconomicRisk）
 3. 🏥 精神疾患の状況
@@ -33,19 +31,14 @@ livelihood-support-db:get_handover_summary_tool(recipient_name="クライアン�
 6. 💰 金銭管理状況と支援サービス
 7. 🤝 連携している機関
 
-**support-dbのクライアントの場合:**
-```
-support-db:get_client_profile(client_name="クライアント名")
-```
+**障害福祉クライアントの場合（port 7687）:**
+→ `neo4j-support-db` スキルのテンプレート2（クライアントプロフィール）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 ### ステップ2：支援記録の要約
 
 過去の支援記録から重要なパターンを抽出する。
 
-```
-support-db:get_support_logs(client_name="クライアント名", limit=30)
-support-db:discover_care_patterns(client_name="クライアント名")
-```
+→ `neo4j-support-db` スキルのテンプレート5（支援記録取得）およびテンプレート6（ケアパターン発見）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 **要約に含めるべきポイント:**
 - 効果的だった対応トップ3
@@ -106,9 +99,7 @@ support-db:discover_care_patterns(client_name="クライアント名")
 
 引き継ぎ時に期限切れ・期限間近の証明書がないか確認する。
 
-```
-support-db:check_renewal_dates(client_name="クライアント名")
-```
+→ `neo4j-support-db` スキルのテンプレート4（更新期限チェック）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 期限切れが発見された場合は、引き継ぎ資料の冒頭に赤字で警告を追加する。
 
@@ -128,7 +119,7 @@ support-db:check_renewal_dates(client_name="クライアント名")
 
 担当者が複数のクライアントを引き継ぐ場合：
 
-1. `list_clients()` で担当クライアント一覧を取得
+1. `neo4j-support-db` スキルのテンプレート1（クライアント一覧）で担当クライアント一覧を取得
 2. 各クライアントについて上記手順を実行
 3. 緊急度（禁忌事項の多さ、更新期限の近さ）でソートして優先順位をつける
-4. PDF/Excelでの一括出力が必要な場合は `generate_report_file` を使用
+4. PDF/Excelでの一括出力が必要な場合は `html-to-pdf` スキルまたは `xlsx` スキルを使用

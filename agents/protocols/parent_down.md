@@ -22,9 +22,7 @@
 
 ### フェーズ1：緊急情報の確認（emergency.mdが先行している場合はスキップ）
 
-```
-support-db:search_emergency_info(client_name="本人名")
-```
+→ `neo4j-support-db` スキルのテンプレート2（クライアントプロフィール）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 禁忌事項と緊急連絡先を最初に確認し、安全を確保する。
 
@@ -32,12 +30,11 @@ support-db:search_emergency_info(client_name="本人名")
 
 親がどのような役割を担っていたかをグラフデータベースから取得する。
 
-```
-support-db:run_cypher_query(cypher="""
+以下のCypherを `neo4j` MCP の `read_neo4j_cypher` で実行:
+```cypher
 MATCH (r:Relative {name: '親の名前'})-[:PERFORMS]->(cr:CareRole)
 RETURN cr.name AS タスク名, cr.frequency AS 頻度, cr.notes AS 備考
 ORDER BY cr.priority DESC
-""")
 ```
 
 **典型的なCareRole:**
@@ -52,18 +49,15 @@ ORDER BY cr.priority DESC
 
 各CareRoleに紐づく代替サービス・代替人物を検索する。
 
-```
-support-db:run_cypher_query(cypher="""
+以下のCypherを `neo4j` MCP の `read_neo4j_cypher` で実行:
+```cypher
 MATCH (cr:CareRole {name: 'タスク名'})-[:CAN_BE_PERFORMED_BY]->(alt)
 RETURN labels(alt) AS 種類, alt.name AS 名前, alt.phone AS 連絡先, alt.notes AS 備考
-""")
 ```
 
 代替手段が見つからない場合は、以下で候補を探す：
 
-```
-support-db:search_service_providers(service_type="該当するサービス種類", city="地域名", availability="空きあり")
-```
+→ `provider-search` スキルのテンプレート1（事業所検索）を `neo4j` MCP の `read_neo4j_cypher` で実行。
 
 **サービス種類のマッピング:**
 | CareRole | 対応する福祉サービス |
