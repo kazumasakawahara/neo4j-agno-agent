@@ -23,6 +23,9 @@ pg = st.navigation({
     "管理": [
         st.Page("pages/client_list.py", title="クライアント一覧", icon="👥"),
     ],
+    "可視化": [
+        st.Page("pages/ecomap.py", title="エコマップ", icon="🗺️"),
+    ],
     "活用": [
         st.Page("pages/claude_guide.py", title="Claude活用ガイド", icon="🤖"),
         st.Page("app_ui.py", title="AIチャット", icon="🛡️"),

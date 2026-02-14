@@ -77,6 +77,12 @@ See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
    - `ecomap-generator/`: エコマップ生成（Mermaid/SVG）
    - Install: `./setup.sh --skills` creates symlinks from repo to `~/.claude/skills/`
 
+7. **Ecomap Generator** (`skills/ecomap_generator/`):
+   - `drawio_engine.py`: draw.io XML generation with radial layout algorithm
+   - 4 templates: full_view, support_meeting, emergency, handover
+   - 9 category styles with color-coded nodes
+   - Fallback to sample data when DB unavailable
+
 ### AI Models
 
 - **Gemini 2.0 Flash**: Narrative text structuring (extraction) via `lib/ai_extractor.py`
@@ -204,7 +210,8 @@ neo4j-agno-agent/
 ├── pages/                  # Dashboard sub-pages
 │   ├── home.py             # Dashboard home with stats & workflow cards
 │   ├── client_list.py      # Searchable client list
-│   └── claude_guide.py     # Claude Desktop usage guide
+│   ├── claude_guide.py     # Claude Desktop usage guide
+│   └── ecomap.py           # Ecomap generation (draw.io)
 ├── agents/                 # Agent protocols & manifesto
 │   ├── MANIFESTO.md        # Unified manifesto v4.0
 │   ├── ROUTING.md          # MCP server selection guide
@@ -221,6 +228,10 @@ neo4j-agno-agent/
 ├── mobile/                 # Mobile narrative input system
 ├── sos/                    # Emergency notification system
 ├── scripts/                # Utility scripts (backup.sh)
+├── skills/                 # Internal skills (Python packages)
+│   └── ecomap_generator/   # draw.io ecomap XML generation
+│       ├── __init__.py
+│       └── drawio_engine.py
 ├── claude-skills/          # Claude Desktop Skills (bundled)
 │   ├── neo4j-support-db/   # 障害福祉DB (4-pillar, port 7687)
 │   ├── livelihood-support/ # 生活困窮者DB (7-pillar, port 7688)

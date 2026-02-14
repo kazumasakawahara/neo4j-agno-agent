@@ -163,6 +163,7 @@ Claude が SKILL.md に含まれるCypherテンプレートを参照し、汎用
 **出力形式:**
 - Mermaid 形式（Claude Desktop でそのまま表示可能）
 - SVG 形式（印刷・共有用）
+- **draw.io 形式**（ダッシュボードの「可視化」→「エコマップ」から生成・ダウンロード可能。draw.ioアプリで自由に編集できます）
 
 **プロンプト例:**
 ```
@@ -171,6 +172,8 @@ Claude が SKILL.md に含まれるCypherテンプレートを参照し、汎用
 ```
 佐藤さんの緊急時体制のエコマップをMermaid形式で表示して
 ```
+
+> **ヒント**: Claude Desktop を使わなくても、ダッシュボードの「可視化」→「エコマップ」ページからGUIで draw.io 形式のエコマップを生成できます。
 
 ---
 
@@ -184,7 +187,8 @@ Claude が SKILL.md に含まれるCypherテンプレートを参照し、汎用
 | 引き継ぎ資料の作成 | `livelihood-support` |
 | 事業所の検索・比較 | `provider-search` |
 | 緊急時の即時対応 | `emergency-protocol` |
-| 支援関係の可視化 | `ecomap-generator` |
+| 支援関係の可視化（Mermaid/SVG） | `ecomap-generator` |
+| 支援関係の可視化（draw.io） | ダッシュボード「可視化」→「エコマップ」 |
 | 証明書の期限管理 | `neo4j-support-db` |
 | 口コミの参照・登録 | `provider-search` |
 | 類似ケースの検索 | `livelihood-support` |
