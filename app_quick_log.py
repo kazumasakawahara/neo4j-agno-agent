@@ -10,6 +10,9 @@
 
 import streamlit as st
 from datetime import date, datetime
+from functools import lru_cache
+
+import pykakasi
 
 # --- ライブラリからインポート ---
 from lib.db_operations import (
@@ -22,6 +25,16 @@ from lib.db_operations import (
 )
 from lib.utils import init_session_state
 from lib.voice_input import render_voice_input
+
+# --- 漢字→ひらがな変換 ---
+_kakasi = pykakasi.kakasi()
+
+
+@lru_cache(maxsize=128)
+def to_hiragana(text: str) -> str:
+    """漢字テキストをひらがなに変換（検索用）"""
+    result = _kakasi.convert(text)
+    return "".join(item["hira"] for item in result)
 
 # --- ページ設定 ---
 # Page Config handled by app.py (unified navigation)
@@ -91,6 +104,7 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
 
 # --- セッション状態の初期化 ---
 if 'quick_log_step' not in st.session_state:
@@ -202,23 +216,81 @@ if st.session_state.quick_log_step == 'select_client':
             return f"{c['displayCode']}: {c.get('name', '不明')}"
         return c.get('name', '不明')
 
-    # 選択用オプション（識別子として使う値 → 表示名）
-    client_options = {
-        c.get('clientId') or c.get('name'): format_client(c)
-        for c in clients_extended
+    # --- あかさたなボタンで絞り込み（テキスト入力不要・IME問題なし） ---
+    # 各クライアントの読みの先頭行を事前計算
+    KANA_ROWS = {
+        "あ": "あいうえお", "か": "かきくけこ", "さ": "さしすせそ",
+        "た": "たちつてと", "な": "なにぬねの", "は": "はひふへほ",
+        "ま": "まみむめも", "や": "やゆよ", "ら": "らりるれろ",
+        "わ": "わをん",
     }
 
-    selected = st.selectbox(
-        "クライアントを選択",
-        options=[""] + list(client_options.keys()),
-        format_func=lambda x: "👤 選択してください" if x == "" else client_options.get(x, x),
-        label_visibility="collapsed"
-    )
+    def get_kana_row(name: str) -> str:
+        """名前の先頭文字が属するかな行を返す"""
+        hira = to_hiragana(name)
+        if not hira:
+            return ""
+        first = hira[0]
+        for row_key, row_chars in KANA_ROWS.items():
+            if first in row_chars:
+                return row_key
+        return ""
 
-    if selected:
-        st.session_state.selected_client = selected
-        st.session_state.quick_log_step = 'select_type'
-        st.rerun()
+    # セッション状態の初期化
+    if 'kana_filter' not in st.session_state:
+        st.session_state.kana_filter = None
+
+    # あかさたなボタン行
+    st.caption("🔍 頭文字で絞り込み")
+    filter_cols = st.columns(6)
+    kana_keys = ["全員", "あ", "か", "さ", "た", "な"]
+    for i, key in enumerate(kana_keys):
+        with filter_cols[i]:
+            is_active = (key == "全員" and st.session_state.kana_filter is None) or \
+                        (st.session_state.kana_filter == key)
+            btn_type = "primary" if is_active else "secondary"
+            if st.button(key, key=f"kana_{key}", use_container_width=True, type=btn_type):
+                st.session_state.kana_filter = None if key == "全員" else key
+                st.rerun()
+
+    filter_cols2 = st.columns(5)
+    kana_keys2 = ["は", "ま", "や", "ら", "わ"]
+    for i, key in enumerate(kana_keys2):
+        with filter_cols2[i]:
+            is_active = st.session_state.kana_filter == key
+            btn_type = "primary" if is_active else "secondary"
+            if st.button(key, key=f"kana_{key}", use_container_width=True, type=btn_type):
+                st.session_state.kana_filter = key
+                st.rerun()
+
+    # フィルタリング
+    if st.session_state.kana_filter:
+        filtered = [
+            c for c in clients_extended
+            if get_kana_row(c.get('name', '') or '') == st.session_state.kana_filter
+        ]
+    else:
+        filtered = clients_extended
+
+    # 候補リスト
+    if not filtered:
+        st.info("該当するクライアントがいません。別の行を選んでください。")
+    else:
+        client_map = {
+            c.get('clientId') or c.get('name'): format_client(c)
+            for c in filtered
+        }
+        selected = st.radio(
+            "クライアントを選択",
+            options=list(client_map.keys()),
+            format_func=lambda x: client_map.get(x, x),
+            label_visibility="collapsed",
+        )
+
+        if st.button("▶ この人の記録をつける", type="primary", use_container_width=True):
+            st.session_state.selected_client = selected
+            st.session_state.quick_log_step = 'select_type'
+            st.rerun()
 
 # --- Step 2: 記録タイプ選択 ---
 elif st.session_state.quick_log_step == 'select_type':
