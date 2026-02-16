@@ -41,6 +41,9 @@ SKILLS=(
     "provider-search"
     "emergency-protocol"
     "ecomap-generator"
+    "html-to-pdf"
+    "inheritance-calculator"
+    "wamnet-provider-sync"
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
