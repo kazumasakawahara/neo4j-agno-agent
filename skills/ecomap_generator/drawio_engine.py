@@ -213,7 +213,7 @@ def fetch_ecomap_data(client_name: str, template: str = "full_view") -> Dict:
 
     if "ngActions" in categories:
         data["ngActions"] = run_query(
-            "MATCH (c:Client {name: $name})-[:PROHIBITED|MUST_AVOID]->(ng:NgAction) "
+            "MATCH (c:Client {name: $name})-[:MUST_AVOID|PROHIBITED]->(ng:NgAction) "
             "RETURN ng.action AS action, ng.reason AS reason, ng.riskLevel AS riskLevel "
             "ORDER BY CASE ng.riskLevel "
             "  WHEN 'LifeThreatening' THEN 1 WHEN 'Panic' THEN 2 ELSE 3 END",
@@ -222,7 +222,7 @@ def fetch_ecomap_data(client_name: str, template: str = "full_view") -> Dict:
 
     if "carePreferences" in categories:
         rows = run_query(
-            "MATCH (c:Client {name: $name})-[:PREFERS|REQUIRES]->(cp:CarePreference) "
+            "MATCH (c:Client {name: $name})-[:REQUIRES|PREFERS]->(cp:CarePreference) "
             "RETURN cp.category AS category, cp.instruction AS instruction, cp.priority AS priority "
             "ORDER BY CASE cp.priority "
             "  WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END",
@@ -234,7 +234,7 @@ def fetch_ecomap_data(client_name: str, template: str = "full_view") -> Dict:
 
     if "keyPersons" in categories:
         data["keyPersons"] = run_query(
-            "MATCH (c:Client {name: $name})-[r:EMERGENCY_CONTACT|HAS_KEY_PERSON]->(kp:KeyPerson) "
+            "MATCH (c:Client {name: $name})-[r:HAS_KEY_PERSON|EMERGENCY_CONTACT]->(kp:KeyPerson) "
             "RETURN kp.name AS name, kp.relationship AS relationship, "
             "       kp.phone AS phone, coalesce(r.rank, r.priority) AS rank "
             "ORDER BY coalesce(r.rank, r.priority, 99)",
@@ -243,14 +243,14 @@ def fetch_ecomap_data(client_name: str, template: str = "full_view") -> Dict:
 
     if "guardians" in categories:
         data["guardians"] = run_query(
-            "MATCH (c:Client {name: $name})-[:HAS_GUARDIAN|HAS_LEGAL_REP]->(g:Guardian) "
+            "MATCH (c:Client {name: $name})-[:HAS_LEGAL_REP|HAS_GUARDIAN]->(g:Guardian) "
             "RETURN g.name AS name, g.type AS type, g.phone AS phone",
             {"name": client_name},
         )
 
     if "certificates" in categories:
         data["certificates"] = run_query(
-            "MATCH (c:Client {name: $name})-[:HOLDS|HAS_CERTIFICATE]->(cert:Certificate) "
+            "MATCH (c:Client {name: $name})-[:HAS_CERTIFICATE|HOLDS]->(cert:Certificate) "
             "RETURN cert.type AS type, cert.grade AS grade, "
             "       toString(cert.nextRenewalDate) AS nextRenewalDate",
             {"name": client_name},
@@ -625,17 +625,23 @@ def _build_xml(nodes: list, edges: list, data: Dict) -> str:
 
     for node in nodes:
         id_map[node["id"]] = str(cell_id)
-        label = _esc(node["label"])
 
         if node.get("is_center"):
+            # 中心ノード: HTML書式付きラベルを構築し、XML属性値としてエスケープ
             subtitle = node.get("subtitle", "")
+            name_esc = _esc(node["label"])
             if subtitle:
-                label = (
-                    f'<b style="font-size:16px">{label}</b>'
+                html = (
+                    f'<b style="font-size:16px">{name_esc}</b>'
                     f'<br/><span style="font-size:10px">{_esc(subtitle)}</span>'
                 )
             else:
-                label = f'<b>{label}</b>'
+                html = f'<b>{name_esc}</b>'
+            label = _esc(html)
+        else:
+            # 通常ノード: \n を <br/> に変換し、XML属性値としてエスケープ
+            html = _esc(node["label"]).replace("\n", "<br/>")
+            label = _esc(html)
 
         lines.append(
             f'        <mxCell id="{cell_id}" value="{label}"'

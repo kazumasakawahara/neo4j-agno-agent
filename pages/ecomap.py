@@ -6,16 +6,49 @@ draw.io形式の支援ネットワーク図を生成・ダウンロード
 import streamlit as st
 import sys
 import os
+import base64
+import zlib
+import urllib.parse
 from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from lib.db_operations import get_clients_list, is_db_available
 from skills.ecomap_generator.drawio_engine import (
     generate_drawio_bytes,
+    generate_drawio_xml,
     TEMPLATE_CONFIGS,
     CATEGORY_STYLES,
     fetch_ecomap_data,
 )
+
+def _render_drawio_web_button(xml_str: str) -> None:
+    """draw.io Web版で直接開くボタンを表示する。
+
+    draw.io の URL ハッシュ形式 (#R...) を使い、ワンクリックで
+    ブラウザの draw.io エディタにエコマップを読み込む。
+    エンコード: encodeURIComponent(xml) → deflateRaw → base64
+    """
+    if not xml_str:
+        return
+
+    encoded = urllib.parse.quote(xml_str, safe="")
+    compressed = zlib.compress(encoded.encode("utf-8"), 9)[2:-4]  # raw deflate
+    b64 = base64.b64encode(compressed).decode("ascii")
+    drawio_url = f"https://app.diagrams.net/#R{b64}"
+
+    st.markdown(
+        f'<a href="{drawio_url}" target="_blank" rel="noopener noreferrer">'
+        f'<button style="'
+        f"width:100%;padding:0.5rem 1rem;border-radius:0.5rem;"
+        f"background:#4CAF50;color:white;border:none;"
+        f"font-size:0.95rem;font-weight:600;cursor:pointer;"
+        f"margin-top:0.5rem;"
+        f'">'
+        f"🌐 draw.io Web版で開く"
+        f"</button></a>",
+        unsafe_allow_html=True,
+    )
+
 
 # =============================================================================
 # カスタムCSS
@@ -182,8 +215,10 @@ if selected_client:
     if generate_clicked:
         with st.spinner("draw.io XMLを生成中..."):
             drawio_bytes = generate_drawio_bytes(selected_client, selected_template)
+            drawio_xml = generate_drawio_xml(selected_client, selected_template)
 
         st.session_state["ecomap_bytes"] = drawio_bytes
+        st.session_state["ecomap_xml"] = drawio_xml
         st.session_state["ecomap_client"] = selected_client
         st.session_state["ecomap_template"] = selected_template
         st.success(f"生成完了（{len(drawio_bytes):,} bytes）")
@@ -200,6 +235,9 @@ if selected_client:
                 mime="application/xml",
                 use_container_width=True,
             )
+
+        # draw.io Web版で開くボタン
+        _render_drawio_web_button(st.session_state.get("ecomap_xml", ""))
 
 # =============================================================================
 # draw.io 案内
