@@ -12,8 +12,10 @@ Streamlit UI (pages/ecomap.py) から呼び出される。
 """
 
 import math
+import re
 import sys
 import os
+import xml.etree.ElementTree as ET
 from datetime import date
 from typing import Dict, List, Optional
 from pathlib import Path
@@ -627,25 +629,37 @@ def _build_xml(nodes: list, edges: list, data: Dict) -> str:
         id_map[node["id"]] = str(cell_id)
 
         if node.get("is_center"):
-            # 中心ノード: HTML書式付きラベルを構築し、XML属性値としてエスケープ
+            # 中心ノード: HTML書式付きラベル
+            # draw.io html=1 では value 属性に HTML を格納する。
+            # HTML タグ自体を XML 属性値としてエスケープする必要がある。
             subtitle = node.get("subtitle", "")
-            name_esc = _esc(node["label"])
+            # 1) テキスト部分だけ HTML-safe に（&, <, >, " をエスケープ）
+            name_safe = _esc(node["label"])
             if subtitle:
+                sub_safe = _esc(subtitle)
                 html = (
-                    f'<b style="font-size:16px">{name_esc}</b>'
-                    f'<br/><span style="font-size:10px">{_esc(subtitle)}</span>'
+                    f'<b style="font-size:16px">{name_safe}</b>'
+                    f'<br/><span style="font-size:10px">{sub_safe}</span>'
                 )
             else:
-                html = f'<b>{name_esc}</b>'
-            label = _esc(html)
+                html = f'<b>{name_safe}</b>'
+            # 2) HTML 全体を XML 属性値としてエスケープ
+            label = _esc_attr(html)
         else:
-            # 通常ノード: \n を <br/> に変換し、XML属性値としてエスケープ
-            html = _esc(node["label"]).replace("\n", "<br/>")
-            label = _esc(html)
+            # 通常ノード: テキスト→HTMLエスケープ→改行を<br/>に→XML属性エスケープ
+            # ステップ1: テキスト中の & < > " をエスケープ
+            text_safe = _esc(node["label"])
+            # ステップ2: 改行を HTML <br/> に変換
+            html = text_safe.replace("\n", "<br/>")
+            # ステップ3: HTML 全体を XML 属性値としてエスケープ
+            label = _esc_attr(html)
+
+        # style もエスケープ（通常は安全な値だが念のため）
+        style_safe = _esc_attr(node["style"])
 
         lines.append(
             f'        <mxCell id="{cell_id}" value="{label}"'
-            f' style="{node["style"]}"'
+            f' style="{style_safe}"'
             f' vertex="1" parent="1">'
             f'<mxGeometry x="{node["x"]:.0f}" y="{node["y"]:.0f}"'
             f' width="{node["w"]:.0f}" height="{node["h"]:.0f}" as="geometry"/>'
@@ -657,9 +671,10 @@ def _build_xml(nodes: list, edges: list, data: Dict) -> str:
         src = id_map.get(edge["source"], "")
         tgt = id_map.get(edge["target"], "")
         if src and tgt:
+            edge_style_safe = _esc_attr(edge["style"])
             lines.append(
                 f'        <mxCell id="{cell_id}" value=""'
-                f' style="{edge["style"]}"'
+                f' style="{edge_style_safe}"'
                 f' edge="1" parent="1" source="{src}" target="{tgt}">'
                 f'<mxGeometry relative="1" as="geometry"/>'
                 f'</mxCell>'
@@ -709,8 +724,8 @@ def _add_legend(lines: list, cell_id: int, data: Dict) -> int:
         style = _legend_style(fill, stroke)
 
         lines.append(
-            f'        <mxCell id="{cell_id}" value="{_esc(label)}"'
-            f' style="{style}"'
+            f'        <mxCell id="{cell_id}" value="{_esc_attr(label)}"'
+            f' style="{_esc_attr(style)}"'
             f' vertex="1" parent="1">'
             f'<mxGeometry x="{legend_x}" y="{legend_y}" width="{legend_w}" height="24" as="geometry"/>'
             f'</mxCell>'
@@ -721,18 +736,42 @@ def _add_legend(lines: list, cell_id: int, data: Dict) -> int:
     return cell_id
 
 
+def _strip_invalid_xml_chars(text: str) -> str:
+    """XML 1.0 で許可されていない文字を除去する。
+
+    XML 1.0 仕様で許可されている文字:
+    #x9 | #xA | #xD | [#x20-#xD7FF] | [#xE000-#xFFFD] | [#x10000-#x10FFFF]
+    """
+    return re.sub(
+        r"[^\x09\x0A\x0D\x20-\uD7FF\uE000-\uFFFD\U00010000-\U0010FFFF]",
+        "",
+        str(text),
+    )
+
+
 def _esc(text: str) -> str:
-    """XML用エスケープ"""
+    """XML用エスケープ（無効文字の除去を含む）"""
     if not text:
         return ""
+    s = _strip_invalid_xml_chars(str(text))
     return (
-        str(text)
+        s
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
         .replace('"', "&quot;")
         .replace("'", "&apos;")
     )
+
+
+def _esc_attr(text: str) -> str:
+    """XML属性値としてエスケープ済みの文字列を返す。
+
+    draw.io の html=1 ノードでは value 属性に HTML を含めるが、
+    XML 属性値として正しくエスケープされている必要がある。
+    この関数は _esc() と同一だが、意図を明確にするために分離。
+    """
+    return _esc(text)
 
 
 # =============================================================================
@@ -749,10 +788,23 @@ def generate_drawio_xml(client_name: str, template: str = "full_view") -> str:
 
     Returns:
         draw.io XML 文字列（.drawio ファイルに保存可能）
+
+    Raises:
+        ValueError: 生成されたXMLが不正な場合
     """
     data = fetch_ecomap_data(client_name, template)
     nodes, edges = _compute_layout(data)
-    return _build_xml(nodes, edges, data)
+    xml = _build_xml(nodes, edges, data)
+
+    # XML 妥当性を検証（draw.io で開けないファイルの生成を防止）
+    try:
+        ET.fromstring(xml)
+    except ET.ParseError as e:
+        import logging
+        logging.error("エコマップ XML 検証エラー: %s", e)
+        raise ValueError(f"生成されたエコマップ XML が不正です: {e}") from e
+
+    return xml
 
 
 def generate_drawio_bytes(client_name: str, template: str = "full_view") -> bytes:
