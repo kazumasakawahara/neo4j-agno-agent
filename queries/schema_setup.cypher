@@ -59,7 +59,7 @@ MERGE (ng:NgAction {
   reason: 'パニックを誘発し、自傷行為につながる可能性',
   riskLevel: 'Panic'
 })
-MERGE (c)-[:PROHIBITED]->(ng);
+MERGE (c)-[:MUST_AVOID]->(ng);
 
 // サンプル推奨ケア
 MERGE (c:Client {name: 'サンプル太郎'})
@@ -69,7 +69,7 @@ MERGE (cp:CarePreference {
   instruction: '静かに見守り、5分待つ',
   priority: 'High'
 })
-MERGE (c)-[:PREFERS]->(cp);
+MERGE (c)-[:REQUIRES]->(cp);
 
 // ━━━ 統計情報の確認 ━━━
 

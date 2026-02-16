@@ -367,10 +367,10 @@ ORDER BY c.name
 
 | リレーション | 方向 | 備考 |
 |-------------|------|------|
-| `MUST_AVOID` | Client → NgAction | 主要な禁忌リレーション |
-| `PROHIBITED` | Client → NgAction | 互換性のため残存 |
-| `REQUIRES` | Client → CarePreference | 主要な推奨ケアリレーション |
-| `PREFERS` | Client → CarePreference | 互換性のため残存 |
+| `MUST_AVOID` | Client → NgAction | **正式名**（書き込み時はこちらを使用） |
+| ~~`PROHIBITED`~~ | Client → NgAction | **廃止**（読み取り時のみ後方互換で対応） |
+| `REQUIRES` | Client → CarePreference | **正式名**（書き込み時はこちらを使用） |
+| ~~`PREFERS`~~ | Client → CarePreference | **廃止**（読み取り時のみ後方互換で対応） |
 | `HAS_KEY_PERSON` | Client → KeyPerson | rankプロパティで優先順位 |
 | `TREATED_AT` | Client → Hospital | — |
 | `HAS_LEGAL_REP` | Client → Guardian | — |

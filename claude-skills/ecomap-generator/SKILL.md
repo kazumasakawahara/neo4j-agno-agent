@@ -71,10 +71,10 @@ RETURN path LIMIT 100
 **緊急時体制:**
 ```cypher
 MATCH (c:Client {name: 'クライアント名'})
-OPTIONAL MATCH (c)-[:PROHIBITED|MUST_AVOID]->(ng:NgAction)
-OPTIONAL MATCH (c)-[:PREFERS|REQUIRES]->(cp:CarePreference)
+OPTIONAL MATCH (c)-[:MUST_AVOID|PROHIBITED]->(ng:NgAction)
+OPTIONAL MATCH (c)-[:REQUIRES|PREFERS]->(cp:CarePreference)
 WHERE cp.priority = 'High'
-OPTIONAL MATCH (c)-[kp_rel:EMERGENCY_CONTACT|HAS_KEY_PERSON]->(kp:KeyPerson)
+OPTIONAL MATCH (c)-[kp_rel:HAS_KEY_PERSON|EMERGENCY_CONTACT]->(kp:KeyPerson)
 OPTIONAL MATCH (c)-[:HAS_GUARDIAN|HAS_LEGAL_REP]->(g:Guardian)
 OPTIONAL MATCH (c)-[:TREATED_AT]->(h:Hospital)
 RETURN c, ng, cp, kp, kp_rel, g, h
@@ -105,9 +105,9 @@ RETURN c, ng, cp, kp, kp_rel, g, h
 
 ### リレーション
 
-- `PROHIBITED`, `MUST_AVOID` → 禁忌事項
-- `PREFERS`, `REQUIRES` → 推奨ケア
-- `HAS_KEY_PERSON`, `EMERGENCY_CONTACT` → キーパーソン
+- `MUST_AVOID` → 禁忌事項（正式名。旧名 `PROHIBITED` は廃止・読み取り時のみ後方互換対応）
+- `REQUIRES` → 推奨ケア（正式名。旧名 `PREFERS` は廃止・読み取り時のみ後方互換対応）
+- `HAS_KEY_PERSON` → キーパーソン（正式名。旧名 `EMERGENCY_CONTACT` は廃止・読み取り時のみ後方互換対応）
 - `HAS_GUARDIAN`, `HAS_LEGAL_REP` → 後見人
 - `TREATED_AT` → 医療機関
 - `HAS_CERTIFICATE` → 手帳

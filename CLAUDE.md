@@ -159,6 +159,7 @@ Five skills provide Cypher templates executed via the generic neo4j MCP:
 | ecomap-generator | N/A | N/A | エコマップ生成 |
 
 See `agents/ROUTING.md` for guidance on choosing between skills.
+See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for all LLMs/agents).
 
 ## Database Schema Notes
 
@@ -187,15 +188,20 @@ See `agents/ROUTING.md` for guidance on choosing between skills.
 
 ### Relationship Patterns
 
+> **命名規則の詳細は `docs/NEO4J_SCHEMA_CONVENTION.md` を参照してください。**
+> 複数 LLM がデータベースに書き込むため、命名規則の厳守が必要です。
+
 ```cypher
 (:Client)-[:HAS_CONDITION]->(:Condition)
-(:Client)-[:PROHIBITED]->(:NgAction)-[:RELATES_TO]->(:Condition)
-(:Client)-[:PREFERS]->(:CarePreference)
-(:Client)-[:EMERGENCY_CONTACT]->(:KeyPerson)
-(:Client)-[:HAS_GUARDIAN]->(:Guardian)
-(:Client)-[:HOLDS]->(:Certificate)
+(:Client)-[:MUST_AVOID]->(:NgAction)-[:IN_CONTEXT]->(:Condition)
+(:Client)-[:REQUIRES]->(:CarePreference)
+(:Client)-[:HAS_KEY_PERSON {rank: 1}]->(:KeyPerson)
+(:Client)-[:HAS_LEGAL_REP]->(:Guardian)
+(:Client)-[:HAS_CERTIFICATE]->(:Certificate)
 (:Supporter)-[:LOGGED]->(:SupportLog)-[:ABOUT]->(:Client)
 ```
+
+**命名規則**: ノード=PascalCase / リレーション=UPPER_SNAKE_CASE / プロパティ=camelCase
 
 ## File Organization
 
@@ -262,10 +268,16 @@ neo4j-agno-agent/
 
 ### Neo4j Query Patterns
 
+- **命名規則**: `docs/NEO4J_SCHEMA_CONVENTION.md` に厳密に従うこと
+  - ノード: PascalCase (`Client`, `NgAction`)
+  - リレーション: UPPER_SNAKE_CASE (`MUST_AVOID`, `HAS_KEY_PERSON`)
+  - プロパティ: camelCase (`riskLevel`, `nextRenewalDate`)
+  - 廃止名 (`PROHIBITED`, `PREFERS`, `EMERGENCY_CONTACT`, `RELATES_TO`) は書き込み禁止
 - Use `MERGE` for idempotent client/node creation
 - Always use parameterized queries (`$param`) to prevent Cypher injection
 - Handle optional fields with `COALESCE()` or `CASE WHEN ... ELSE ... END`
 - Check existence before creating relationships to avoid duplicates
+- 読み取りクエリでは旧名との後方互換性を `[:NEW|OLD]` 構文で確保する
 
 ### AI Extraction
 

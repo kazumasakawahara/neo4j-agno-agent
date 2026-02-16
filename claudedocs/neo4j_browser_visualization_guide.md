@@ -104,12 +104,15 @@ LIMIT 25
 
 ### リレーションシップの色分け
 
+> **命名規則**: 正式名は右側。左側は廃止済み（後方互換のため .grass に残存）。
+> 詳細は `docs/NEO4J_SCHEMA_CONVENTION.md` を参照。
+
 | リレーション | 色 | 太さ | 意味 |
 |-------------|-----|------|------|
-| **PROHIBITED** / **MUST_AVOID** | 赤 | 3px | 禁忌（最重要） |
-| **PREFERS** / **REQUIRES** | 緑 | 2px | 推奨 |
+| **MUST_AVOID** (旧: PROHIBITED) | 赤 | 3px | 禁忌（最重要） |
+| **REQUIRES** (旧: PREFERS) | 緑 | 2px | 推奨 |
 | **LOGGED** / **ABOUT** | オレンジ | 1.5px | 記録 |
-| **EMERGENCY_CONTACT** / **HAS_KEY_PERSON** | ピンク | 2px | 緊急連絡 |
+| **HAS_KEY_PERSON** (旧: EMERGENCY_CONTACT) | ピンク | 2px | 緊急連絡 |
 
 ---
 
@@ -135,7 +138,7 @@ LIMIT 100;
 #### 2️⃣ 禁忌事項だけを見る（緊急時）
 ```cypher
 // 【4】禁忌事項マップ（緊急時用）
-MATCH (c:Client {name: '山田健太'})-[:PROHIBITED|MUST_AVOID]->(ng:NgAction)
+MATCH (c:Client {name: '山田健太'})-[:MUST_AVOID|PROHIBITED]->(ng:NgAction)
 RETURN c, ng;
 ```
 
@@ -175,9 +178,8 @@ ORDER BY 頻度 DESC;
 ```cypher
 // 【15】緊急連絡網の可視化
 MATCH (c:Client {name: '山田健太'})-[:HAS_KEY_PERSON|EMERGENCY_CONTACT]->(kp:KeyPerson)
-OPTIONAL MATCH (c)-[:HAS_GUARDIAN]->(g:Guardian)
-OPTIONAL MATCH (c)-[:HAS_LEGAL_REP]->(l:Lawyer)
-RETURN c, kp, g, l;
+OPTIONAL MATCH (c)-[:HAS_LEGAL_REP|HAS_GUARDIAN]->(g:Guardian)
+RETURN c, kp, g;
 ```
 
 **見方**:
@@ -252,7 +254,7 @@ ORDER BY cert.nextRenewalDate;
 ### 3. フィルタリング
 - 特定のリレーションだけ見たい場合：
   ```cypher
-  MATCH (c:Client)-[:PROHIBITED]->(ng:NgAction)
+  MATCH (c:Client)-[:MUST_AVOID|PROHIBITED]->(ng:NgAction)
   RETURN c, ng;  // 禁忌だけ表示
   ```
 
@@ -277,7 +279,7 @@ ORDER BY cert.nextRenewalDate;
 ### Q: ノードが多すぎて見づらい
 **A**:
 1. `LIMIT` を小さくする（例: `LIMIT 10`）
-2. 特定のリレーションだけ表示（例: `[:PROHIBITED]`）
+2. 特定のリレーションだけ表示（例: `[:MUST_AVOID|PROHIBITED]`）
 3. 特定のノードタイプだけ表示（例: `MATCH (ng:NgAction)`）
 
 ### Q: クライアント名がわからない
