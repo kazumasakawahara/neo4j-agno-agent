@@ -352,10 +352,10 @@ def generate_svg_ecomap(
             filtered = [cp for cp in data.get("carePreferences", []) if cp.get("priority") == "High"]
             data["carePreferences_filtered"] = filtered
             add_nodes("carePreferences_filtered", "CarePreference",
-                     lambda x: f"{x.get('category', '')}: {x.get('instruction', '')}\"[:30], "推奨")
+                     lambda x: f"{x.get('category', '')}: {x.get('instruction', '')}"[:30], "推奨")
         else:
             add_nodes("carePreferences", "CarePreference",
-                     lambda x: f"{x.get('category', '')}: {x.get('instruction', '')}\"[:30], "推奨")
+                     lambda x: f"{x.get('category', '')}: {x.get('instruction', '')}"[:30], "推奨")
 
     # キーパーソン
     if template in ["full_view", "support_meeting", "emergency", "handover"]:

@@ -69,7 +69,7 @@ description: 日本の民法に基づいて法定相続人と相続分を計算�
 ### ステップ2: スクリプトの実行
 
 ```bash
-python3 ~/AI-Workspace/claude-skills/inheritance-calculator/inheritance_calculator.py --pretty /tmp/inheritance_input.json
+python3 claude-skills/inheritance-calculator/inheritance_calculator.py --pretty /tmp/inheritance_input.json
 ```
 
 ### ステップ3: 結果の解釈と提示
