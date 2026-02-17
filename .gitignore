@@ -33,3 +33,16 @@ Thumbs.db
 # uv lock file (任意：含めても良い)
 # uv.lock
 *.log
+
+# Generated outputs (エコマップ、レポート等の生成物)
+outputs/
+!outputs/.gitkeep
+claude-skills/ecomap-generator/outputs/
+
+# Temporary files in project root (ルート直下の一時ファイル)
+/ecomap_*.html
+/ecomap_*.svg
+/*.png
+!docs/**/*.png
+/skills-vs-mcp-architecture*.html
+/narrative-analyzer.jsx
