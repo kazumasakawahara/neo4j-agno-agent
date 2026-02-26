@@ -46,3 +46,9 @@ claude-skills/ecomap-generator/outputs/
 !docs/**/*.png
 /skills-vs-mcp-architecture*.html
 /narrative-analyzer.jsx
+
+# Agent config (auto-generated)
+.agent/
+
+# Node.js
+node_modules/
