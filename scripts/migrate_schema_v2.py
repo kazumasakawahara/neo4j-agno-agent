@@ -378,7 +378,7 @@ def phase_0(driver, dry_run=False):
 
 INDEXES_TO_CREATE = [
     # 検索パフォーマンス向上
-    ("idx_client_name", "Client", "name"),
+    # NOTE: Client.name はUNIQUE制約で自動インデックス化されるため除外
     ("idx_hospital_name", "Hospital", "name"),
     ("idx_supporter_name", "Supporter", "name"),
     ("idx_keyperson_name", "KeyPerson", "name"),
@@ -414,6 +414,8 @@ def phase_1(driver, dry_run=False):
                 print(f"    ❌ {idx_name}: {e}")
 
     # 1-2. 一意性制約（Community Edition で利用可能なもの）
+    # UNIQUE制約は自動的にインデックスを含むため、同じプロパティに
+    # 既存のRANGEインデックスがあると競合する。事前に削除が必要。
     print_step("1-2", "一意性制約の追加")
 
     uniqueness_constraints = [
@@ -421,6 +423,27 @@ def phase_1(driver, dry_run=False):
     ]
 
     for name, label, prop in uniqueness_constraints:
+        if not dry_run:
+            # 同じプロパティの既存インデックスを検出・削除（制約との競合回避）
+            try:
+                existing = run_query(driver, """
+                    SHOW INDEXES
+                    YIELD name, type, labelsOrTypes, properties
+                    WHERE type <> 'LOOKUP'
+                      AND $label IN labelsOrTypes
+                      AND $prop IN properties
+                    RETURN name, type
+                """, {"label": label, "prop": prop})
+                for idx in existing:
+                    idx_name = idx["name"]
+                    idx_type = idx["type"]
+                    # 既にUNIQUENESS制約のインデックスならスキップ
+                    if idx_type == "RANGE":
+                        run_write(driver, f"DROP INDEX {idx_name} IF EXISTS")
+                        print(f"    🔄 既存インデックス {idx_name} を削除（制約に置換）")
+            except Exception as e:
+                print(f"    ⚠️ 既存インデックス確認中にエラー: {e}")
+
         query = f"CREATE CONSTRAINT {name} IF NOT EXISTS FOR (n:{label}) REQUIRE n.{prop} IS UNIQUE"
         if dry_run:
             print(f"    🔍 {name}: {label}.{prop} UNIQUE（ドライラン）")
