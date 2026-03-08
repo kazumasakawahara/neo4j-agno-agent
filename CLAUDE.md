@@ -152,7 +152,7 @@ Five skills provide Cypher templates executed via the generic neo4j MCP:
 
 | Skill | Neo4j Port | Templates | Purpose |
 |-------|-----------|-----------|---------|
-| neo4j-support-db | 7687 | 8 read | 障害福祉クライアント管理 |
+| neo4j-support-db | 7687 | 10 read | 障害福祉クライアント管理 |
 | livelihood-support | 7688 | 12 read | 生活困窮者自立支援 |
 | provider-search | 7687 | 6 read + 3 write | 事業所検索・口コミ |
 | emergency-protocol | N/A | N/A | 緊急時プロトコル |
@@ -176,7 +176,7 @@ See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for
 - `:Guardian`: Legal guardians
 - `:Hospital`: Medical providers
 - `:Supporter`: Support staff who log daily care records
-- `:SupportLog`: Daily support records with effectiveness tracking
+- `:SupportLog`: Daily support records with effectiveness tracking, type, duration, nextAction
 
 **Legal Documentation**:
 - `:Certificate`: 手帳・受給者証 with `nextRenewalDate`
@@ -192,13 +192,16 @@ See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for
 > 複数 LLM がデータベースに書き込むため、命名規則の厳守が必要です。
 
 ```cypher
-(:Client)-[:HAS_CONDITION]->(:Condition)
+(:Client)-[:HAS_CONDITION {diagnosedDate}]->(:Condition)
 (:Client)-[:MUST_AVOID]->(:NgAction)-[:IN_CONTEXT]->(:Condition)
 (:Client)-[:REQUIRES]->(:CarePreference)
 (:Client)-[:HAS_KEY_PERSON {rank: 1}]->(:KeyPerson)
 (:Client)-[:HAS_LEGAL_REP]->(:Guardian)
-(:Client)-[:HAS_CERTIFICATE]->(:Certificate)
+(:Client)-[:HAS_CERTIFICATE {issuedDate, status}]->(:Certificate)
+(:Client)-[:TREATED_AT {since, status}]->(:Hospital)
 (:Supporter)-[:LOGGED]->(:SupportLog)-[:ABOUT]->(:Client)
+(:SupportLog)-[:FOLLOWS]->(:SupportLog)
+(:AuditLog)-[:AUDIT_FOR]->(:Client)
 ```
 
 **命名規則**: ノード=PascalCase / リレーション=UPPER_SNAKE_CASE / プロパティ=camelCase
@@ -233,7 +236,7 @@ neo4j-agno-agent/
 │   └── utils.py            # Utilities and session state
 ├── mobile/                 # Mobile narrative input system
 ├── sos/                    # Emergency notification system
-├── scripts/                # Utility scripts (backup.sh)
+├── scripts/                # Utility scripts (backup.sh, migrate_schema_v2.py)
 ├── skills/                 # Internal skills (Python packages)
 │   └── ecomap_generator/   # draw.io ecomap XML generation
 │       ├── __init__.py
@@ -265,6 +268,7 @@ neo4j-agno-agent/
 - **Prohibition priority**: NgAction nodes are safety-critical, treat with highest importance
 - **Date validation**: Use `lib/utils.py::safe_date_parse()` for all date inputs
 - **Session state**: Streamlit apps must call `lib/utils.py::init_session_state()` on startup
+- **Client uniqueness**: `Client.name` に UNIQUE 制約あり。name+dob の複合一意性は `lib/db_operations.py::validate_client_uniqueness()` で検証
 
 ### Neo4j Query Patterns
 
@@ -278,6 +282,8 @@ neo4j-agno-agent/
 - Handle optional fields with `COALESCE()` or `CASE WHEN ... ELSE ... END`
 - Check existence before creating relationships to avoid duplicates
 - 読み取りクエリでは旧名との後方互換性を `[:NEW|OLD]` 構文で確保する
+- **全文検索**: `search_support_logs()` で SupportLog のテキスト検索が可能（`idx_supportlog_fulltext`）
+- **インデックス・制約**: `docs/NEO4J_SCHEMA_CONVENTION.md` の「インデックスと制約」セクションを参照
 
 ### AI Extraction
 
