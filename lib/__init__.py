@@ -10,7 +10,9 @@ from lib.db_operations import (
     get_clients_list,
     get_client_stats,
     get_support_logs,
-    discover_care_patterns
+    discover_care_patterns,
+    search_support_logs,
+    validate_client_uniqueness
 )
 from lib.ai_extractor import get_agent, extract_from_text, parse_json_from_response, EXTRACTION_PROMPT
 from lib.utils import safe_date_parse, init_session_state
@@ -26,6 +28,8 @@ __all__ = [
     'get_client_stats',
     'get_support_logs',
     'discover_care_patterns',
+    'search_support_logs',
+    'validate_client_uniqueness',
     # ai_extractor
     'get_agent',
     'extract_from_text',
