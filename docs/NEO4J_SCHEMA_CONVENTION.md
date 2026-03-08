@@ -72,7 +72,7 @@
 | `PublicAssistance` | 法的基盤 | 公的扶助 | type, grade, startDate |
 | `Organization` | 多機関連携 | 関係機関 | name, type, contact, address |
 | `Supporter` | 多機関連携 | 支援者 | name, role, organization, phone |
-| `SupportLog` | 記録 | 支援記録 | date, situation, action, effectiveness, note |
+| `SupportLog` | 記録 | 支援記録 | date, situation, action, effectiveness, note, type, duration, nextAction |
 | `AuditLog` | 監査 | 監査ログ | timestamp, user, action, targetType, targetName, details |
 | `LifeHistory` | 本人性 | 生育歴 | era, episode, emotion |
 | `Wish` | 本人性 | 本人・家族の願い | content, status, date |
@@ -104,18 +104,18 @@
 
 | リレーション | 方向 | プロパティ | 説明 |
 |---|---|---|---|
-| `HAS_CONDITION` | Client → Condition | — | 特性・診断の紐付け |
+| `HAS_CONDITION` | Client → Condition | diagnosedDate, severity | 特性・診断の紐付け |
 | `MUST_AVOID` | Client → NgAction | — | **禁忌事項（最重要）** |
 | `IN_CONTEXT` | NgAction → Condition | — | 禁忌の文脈（関連特性） |
 | `REQUIRES` | Client → CarePreference | — | 推奨ケアの紐付け |
 | `ADDRESSES` | CarePreference → Condition | — | ケアが対応する特性 |
 | `HAS_KEY_PERSON` | Client → KeyPerson | rank | キーパーソン（rank で優先順位） |
 | `HAS_LEGAL_REP` | Client → Guardian | — | 法定代理人 |
-| `HAS_CERTIFICATE` | Client → Certificate | — | 手帳・受給者証 |
+| `HAS_CERTIFICATE` | Client → Certificate | issuedDate, status | 手帳・受給者証 |
 | `RECEIVES` | Client → PublicAssistance | — | 公的扶助の受給 |
 | `REGISTERED_AT` | Client → Organization | — | 関係機関への登録 |
-| `TREATED_AT` | Client → Hospital | — | 通院先 |
-| `SUPPORTED_BY` | Client → Supporter | — | 支援者の紐付け |
+| `TREATED_AT` | Client → Hospital | since, status | 通院先 |
+| `SUPPORTED_BY` | Client → Supporter | since, until | 支援者の紐付け |
 | `LOGGED` | Supporter → SupportLog | — | 支援記録の作成 |
 | `ABOUT` | SupportLog → Client | — | 記録の対象者 |
 | `HAS_HISTORY` | Client → LifeHistory | — | 生育歴 |
@@ -124,6 +124,8 @@
 | `USES_SERVICE` | Client → ServiceProvider | startDate, endDate, status | サービス利用 |
 | `HAS_FEEDBACK` | ServiceProvider → ProviderFeedback | — | 口コミ |
 | `WROTE` | Supporter → ProviderFeedback | — | 口コミ作成者 |
+| `AUDIT_FOR` | AuditLog → Client | — | 監査ログの対象クライアント |
+| `FOLLOWS` | SupportLog → SupportLog | — | 時系列での前の支援記録 |
 
 ### 生活保護受給者DB（port 7688）
 
@@ -233,6 +235,19 @@ NgAction の riskLevel プロパティで使用する値（優先度順）：
 
 ---
 
+### SupportLog.type 列挙値
+
+SupportLog の type プロパティで使用する値：
+
+| 値 | 意味 | 説明 |
+|---|---|---|
+| `日常記録` | 日常の支援記録 | デフォルト値 |
+| `インシデント` | インシデント報告 | 事故・トラブル等 |
+| `会議` | ケース会議記録 | 支援会議の記録 |
+| `引き継ぎ` | 引き継ぎ記録 | 担当交代時の申し送り |
+
+---
+
 ## LLM・エージェント向けガイドライン
 
 ### Cypher 書き込み時の必須チェックリスト
@@ -257,6 +272,53 @@ NgAction の riskLevel プロパティで使用する値（優先度順）：
 2. 命名規則（PascalCase / UPPER_SNAKE_CASE / camelCase）に従う
 3. 関連する SKILL.md を更新する
 4. `lib/db_operations.py` に対応する register 関数を追加する
+
+---
+
+## インデックスと制約
+
+### RANGE インデックス
+
+| インデックス名 | ノード | プロパティ | 目的 |
+|---|---|---|---|
+| constraint_client_name_unique | Client | name | 一意性制約（自動インデックス） |
+| idx_hospital_name | Hospital | name | 病院名検索 |
+| idx_supporter_name | Supporter | name | 支援者名検索 |
+| idx_keyperson_name | KeyPerson | name | キーパーソン検索 |
+| idx_condition_name | Condition | name | 疾患名検索 |
+| idx_ngaction_risklevel | NgAction | riskLevel | リスクレベル別フィルタリング |
+| idx_carepreference_category | CarePreference | category | カテゴリ別絞り込み |
+| supportlog_date | SupportLog | date | 日付範囲クエリ |
+| idx_supportlog_type | SupportLog | type | 記録種別フィルタリング |
+| certificate_renewal | Certificate | nextRenewalDate | 期限チェック |
+| auditlog_timestamp | AuditLog | timestamp | 監査ログ時系列検索 |
+| idx_auditlog_clientname | AuditLog | clientName | クライアント別監査追跡 |
+| idx_auditlog_user | AuditLog | user | 操作者別監査追跡 |
+
+### 全文検索インデックス
+
+| インデックス名 | ノード | プロパティ | 目的 |
+|---|---|---|---|
+| idx_supportlog_fulltext | SupportLog | situation, action, note | 支援記録のテキスト検索 |
+| idx_lifehistory_fulltext | LifeHistory | episode | 生育歴のテキスト検索 |
+
+> **注意**: Neo4j の全文検索はデフォルトの Lucene 標準アナライザーを使用します。日本語の形態素解析には制限があるため、`CONTAINS` との併用を推奨します。
+
+### 一意性制約
+
+| 制約名 | ノード | プロパティ | 備考 |
+|---|---|---|---|
+| constraint_client_name_unique | Client | name | Community Edition のため単一プロパティ |
+
+> **注意**: Neo4j Community Edition では複合一意性制約（NODE KEY）がサポートされていません。`Client(name + dob)` の複合一意性はアプリケーションレベル（`lib/db_operations.py::validate_client_uniqueness()`）でチェックしています。
+
+### NOT NULL 制約
+
+Community Edition では NOT NULL 制約がサポートされていないため、アプリケーションレベルでバリデーションを行っています。以下のプロパティは必須として扱います：
+
+- `Client.name`: クライアント名
+- `Client.dob`: 生年月日
+- `SupportLog.date`: 記録日
 
 ---
 
@@ -325,3 +387,4 @@ REMOVE sp.office_name, sp.corp_name, sp.service_type,
 | 日付 | 変更内容 |
 |---|---|
 | 2026-02-16 | 初版作成。正式リレーション名の確定、廃止リレーションの明記、LLM向けガイドライン追加 |
+| 2026-03-09 | v2.0 スキーマ改善。インデックス13本追加、UNIQUE制約追加、AUDIT_FOR/FOLLOWSリレーション追加、SupportLog拡張（type/duration/nextAction）、全文検索インデックス追加 |
