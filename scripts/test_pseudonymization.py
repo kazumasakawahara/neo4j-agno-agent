@@ -68,7 +68,7 @@ def test_client_resolution():
     print("📝 テスト 2: クライアント解決関数")
     print("=" * 60)
 
-    from lib.db_operations import (
+    from lib.db_new_operations import (
         resolve_client,
         get_clients_list,
         get_clients_list_extended,
@@ -134,7 +134,7 @@ def test_backward_compatibility():
     print("📝 テスト 3: 後方互換性")
     print("=" * 60)
 
-    from lib.db_operations import get_clients_list, get_support_logs, get_client_stats
+    from lib.db_new_operations import get_clients_list, get_support_logs, get_client_stats
 
     # 既存のAPI関数が動作することを確認
     try:

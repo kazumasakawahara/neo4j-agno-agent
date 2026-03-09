@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 # Adjust path to find lib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from lib.db_operations import run_query
+from lib.db_new_operations import run_query
 
 
 def analyze_transition_impact(key_person_name: str) -> str:

@@ -19,8 +19,8 @@ import json
 from typing import Optional
 from datetime import datetime
 from agno.tools import Toolkit
-from lib.db_operations import run_query, resolve_client, create_audit_log
-from lib.ai_extractor import extract_from_text
+from lib.db_new_operations import run_query, resolve_client, create_audit_log
+from lib.ai_extractor import extract_from_text, graph_to_tree
 
 
 class SupportLogToolkit(Toolkit):
@@ -81,15 +81,18 @@ class SupportLogToolkit(Toolkit):
                 "message": "テキストから情報を抽出できませんでした。"
             }, ensure_ascii=False)
 
+        # グラフ形式→ツリー形式に変換（プレビュー用）
+        tree_data = graph_to_tree(extracted)
+
         # クライアント名の確定
-        detected_client = extracted.get("client", {}).get("name", "")
+        detected_client = tree_data.get("client", {}).get("name", "")
         final_client_name = client_name if client_name else detected_client
 
         if not final_client_name:
             return json.dumps({
                 "status": "needs_client",
                 "message": "クライアント名を特定できませんでした。名前を指定して再度お試しください。",
-                "extracted_preview": extracted
+                "extracted_preview": tree_data
             }, ensure_ascii=False)
 
         # クライアントの存在確認
@@ -98,13 +101,13 @@ class SupportLogToolkit(Toolkit):
             return json.dumps({
                 "status": "client_not_found",
                 "message": f"クライアント「{final_client_name}」が見つかりません。",
-                "extracted_preview": extracted
+                "extracted_preview": tree_data
             }, ensure_ascii=False)
 
         # 抽出結果を整理
-        support_logs = extracted.get("supportLogs", [])
-        ng_actions = extracted.get("ngActions", [])
-        care_prefs = extracted.get("carePreferences", [])
+        support_logs = tree_data.get("supportLogs", [])
+        ng_actions = tree_data.get("ngActions", [])
+        care_prefs = tree_data.get("carePreferences", [])
 
         # supporter_name を設定
         for log in support_logs:

@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta
 from agno.tools import Toolkit
-from lib.db_operations import resolve_client, run_query
+from lib.db_new_operations import resolve_client, run_query
 
 class CareToolkit(Toolkit):
     def __init__(self):
@@ -151,7 +151,7 @@ class CareToolkit(Toolkit):
             "supporter": "ClinicalAdvisor" # Auto-sign as AI Agent
         }
         
-        from lib.db_operations import register_support_log
+        from lib.db_new_operations import register_support_log
         result = register_support_log(log_data, client_name)
         
         if result['status'] == 'success':

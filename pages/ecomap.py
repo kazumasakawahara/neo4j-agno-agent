@@ -12,7 +12,7 @@ import urllib.parse
 from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from lib.db_operations import get_clients_list, is_db_available
+from lib.db_new_operations import get_clients_list, is_db_available
 from skills.ecomap_generator.drawio_engine import (
     generate_drawio_bytes,
     generate_drawio_xml,

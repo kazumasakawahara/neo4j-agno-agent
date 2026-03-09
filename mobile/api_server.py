@@ -27,8 +27,8 @@ from dotenv import load_dotenv
 # 親ディレクトリをパスに追加（lib/からインポートするため）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.ai_extractor import extract_from_text, check_safety_compliance
-from lib.db_operations import (
+from lib.ai_extractor import extract_from_text, check_safety_compliance, graph_to_tree, tree_to_graph
+from lib.db_new_operations import (
     register_to_database,
     get_clients_list,
     get_clients_list_extended,
@@ -234,18 +234,21 @@ async def extract_narrative(request: NarrativeRequest):
                 extracted=None
             )
 
+        # グラフ形式→ツリー形式に変換（UIレスポンス用）
+        tree_data = graph_to_tree(extracted)
+
         # 支援記録に支援者名を設定
-        for log in extracted.get("supportLogs", []):
+        for log in tree_data.get("supportLogs", []):
             if not log.get("supporter"):
                 log["supporter"] = request.supporter_name
 
         # 日付が未設定の支援記録に今日の日付を設定
         today = date.today().isoformat()
-        for log in extracted.get("supportLogs", []):
+        for log in tree_data.get("supportLogs", []):
             if not log.get("date"):
                 log["date"] = today
 
-        formatted = format_extracted_data(extracted)
+        formatted = format_extracted_data(tree_data)
 
         print(f"✅ 抽出成功: クライアント={formatted.client_name}, "
               f"禁忌={len(formatted.ng_actions)}, ケア={len(formatted.care_preferences)}, "
@@ -357,15 +360,29 @@ async def register_narrative(request: RegisterRequest):
     if not request.extracted_data:
         raise HTTPException(status_code=400, detail="登録データがありません")
 
-    client_name = request.extracted_data.get("client", {}).get("name")
+    # ツリー形式またはグラフ形式のどちらも受け入れる
+    raw_data = request.extracted_data
+    if "client" in raw_data and "nodes" not in raw_data:
+        # ツリー形式 → グラフ形式に変換
+        client_name = raw_data.get("client", {}).get("name")
+        graph_data = tree_to_graph(raw_data)
+    else:
+        # 既にグラフ形式
+        graph_data = raw_data
+        client_name = None
+        for node in graph_data.get("nodes", []):
+            if node.get("label") == "Client":
+                client_name = node.get("properties", {}).get("name")
+                break
+
     if not client_name:
         raise HTTPException(status_code=400, detail="クライアント名が特定できません")
 
     print(f"💾 登録開始: クライアント={client_name}, 支援者={request.supporter_name}")
 
     try:
-        # Neo4j に登録
-        result = register_to_database(request.extracted_data, request.supporter_name)
+        # Neo4j に登録（グラフ形式）
+        result = register_to_database(graph_data, request.supporter_name)
 
         print(f"✅ 登録完了: {result}")
 

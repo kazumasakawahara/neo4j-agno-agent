@@ -9,7 +9,7 @@ import os
 from datetime import date
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from lib.db_operations import (
+from lib.db_new_operations import (
     get_clients_list_extended,
     get_client_detail,
     get_client_stats,

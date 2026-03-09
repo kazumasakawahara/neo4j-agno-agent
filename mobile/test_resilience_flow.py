@@ -8,11 +8,11 @@ import subprocess
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
-    from lib.db_operations import run_query
+    from lib.db_new_operations import run_query
 except ImportError:
     # Basic fallback if path magic fails
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
-    from lib.db_operations import run_query
+    from lib.db_new_operations import run_query
 
 def run_cypher(query, params=None):
     # Adapter for db_client style call

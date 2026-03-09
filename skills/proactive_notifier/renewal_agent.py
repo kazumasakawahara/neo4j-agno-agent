@@ -8,7 +8,7 @@ from neo4j.time import Date as Neo4jDate
 # Add parent directory to path to import lib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from lib.db_operations import run_query
+from lib.db_new_operations import run_query
 
 LOG_FILE = "notifications.log"
 

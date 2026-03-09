@@ -25,142 +25,97 @@ def log(message: str, level: str = "INFO"):
 # =============================================================================
 
 EXTRACTION_PROMPT = """
-あなたは「親亡き後支援データベース」のデータ抽出専門家です。
-提供されたテキストから、支援に必要な情報を**JSON形式で**抽出してください。
+あなたは障害福祉支援および生活保護受給者支援における専門的な「ナレッジグラフ抽出エージェント」です。
+提供されたテキスト（支援記録、経過説明書、利用契約など）から、エンティティ（ノード）とそれらの関係性（リレーションシップ）を抽出し、厳格なJSONフォーマットで出力してください。
 
 【最重要ルール - 厳守】
 ⚠️ 絶対に入力テキストにない情報を創作・推測しないでください ⚠️
 - テキストに明示的に書かれていない情報は、絶対に出力しない
 - 「一般的にこうだろう」という推測は禁止
 - 入力テキストから直接引用できる情報のみを抽出する
-- 不明な項目は null または空配列 [] とする
 
 【抽出の姿勢】
 - 暗黙知を見逃さない：「〜すると落ち着く」「〜は嫌がる」を必ず拾う
 - 禁忌事項（NgAction）は最優先：「絶対に〜しないで」「〜するとパニック」を漏らさない
 - 支援記録（日報・レポート）も抽出：「今日〜した」「〜の対応で落ち着いた」
+- テキスト内にクライアント（支援対象者）の名前がある場合は、必ず Client ノードを含めること
 
 【日付の変換ルール - 重要】
 元号（和暦）で入力された日付は必ず西暦（YYYY-MM-DD形式）に変換してください：
 - 明治元年=1868年、大正元年=1912年、昭和元年=1926年、平成元年=1989年、令和元年=2019年
-- 例: 「昭和50年3月15日」→「1975-03-15」
-- 例: 「平成7年12月1日」→「1995-12-01」
-- 例: 「令和5年1月10日」→「2023-01-10」
-- 例: 「S50.3.15」→「1975-03-15」
-- 例: 「H7/12/1」→「1995-12-01」
+- 例: 「昭和50年3月15日」→「1975-03-15」、「令和5年1月10日」→「2023-01-10」
+
+【厳守すべき命名規則】
+以下のルールに違反した出力はシステムエラーを引き起こすため、例外なく厳守すること。
+
+■ ノードラベル (PascalCase) - 許可されるラベルのみ使用:
+Client, Condition, NgAction, CarePreference, KeyPerson, Guardian, Hospital, Certificate, PublicAssistance, Organization, Supporter, SupportLog, AuditLog, LifeHistory, Wish, ServiceProvider
+
+■ リレーションシップタイプ (UPPER_SNAKE_CASE) - 許可されるタイプのみ使用:
+HAS_CONDITION, MUST_AVOID, IN_CONTEXT, REQUIRES, ADDRESSES, HAS_KEY_PERSON, HAS_LEGAL_REP, HAS_CERTIFICATE, RECEIVES, REGISTERED_AT, TREATED_AT, SUPPORTED_BY, LOGGED, ABOUT, FOLLOWS, USES_SERVICE, HAS_HISTORY, HAS_WISH
+※禁止: PROHIBITED, PREFERS などの旧名は絶対に使用しないこと。
+
+■ プロパティ名 (camelCase):
+name, dob, bloodType, riskLevel, date, situation, action, effectiveness, note, type, duration, nextAction, clientId
+
+■ 列挙値:
+- NgAction.riskLevel: "LifeThreatening", "Panic", "Discomfort"
+- SupportLog.effectiveness: "Effective", "Ineffective", "Neutral", "Unknown"
+- SupportLog.situation や CarePreference.category は日本語許容（例: "食事", "パニック時"）
+
+【モデリングのルール】
+- 支援記録は必ず SupportLog ノードとして独立させる
+- 「誰が記録したか」は (Supporter)-[:LOGGED]->(SupportLog) で表現
+- 「誰についての記録か」は (SupportLog)-[:ABOUT]->(Client) で表現
 
 【出力形式】
-必ず以下のJSON構造で出力してください。該当がない項目は空配列[]としてください。
+以下のJSONスキーマに従い、JSONのみを出力すること。Markdownの ```json などのブロック記法は含めないこと。
 
-```json
 {
-  "client": {
-    "name": "氏名（必須）",
-    "dob": "生年月日（YYYY-MM-DD形式、不明なら null）",
-    "bloodType": "血液型（不明なら null）"
-  },
-  "conditions": [
+  "nodes": [
     {
-      "name": "特性・診断名",
-      "status": "Active"
+      "temp_id": "内部リンク用のユニークな仮ID（例: c1, s1, log1）",
+      "label": "許可されたノードラベル",
+      "properties": { "キー": "値" }
     }
   ],
-  "ngActions": [
+  "relationships": [
     {
-      "action": "絶対にしてはいけないこと",
-      "reason": "その理由（なぜ危険か）",
-      "riskLevel": "LifeThreatening または Panic または Discomfort",
-      "relatedCondition": "関連する特性名（あれば）"
-    }
-  ],
-  "carePreferences": [
-    {
-      "category": "食事/入浴/パニック時/移動/睡眠/服薬/コミュニケーション/その他",
-      "instruction": "具体的な手順・方法",
-      "priority": "High または Medium または Low",
-      "relatedCondition": "関連する特性名（あれば）"
-    }
-  ],
-  "supportLogs": [
-    {
-      "date": "記録日（YYYY-MM-DD形式、テキストから推定）",
-      "supporter": "記録者・支援者名",
-      "situation": "状況（パニック時/食事時/入浴時/外出時/コミュニケーション/その他）",
-      "action": "実施した対応の具体的内容",
-      "effectiveness": "Effective（効果的）/Neutral（変化なし）/Ineffective（逆効果）",
-      "note": "詳細メモ・気づき"
-    }
-  ],
-  "certificates": [
-    {
-      "type": "療育手帳/精神障害者保健福祉手帳/身体障害者手帳/障害福祉サービス受給者証/自立支援医療受給者証",
-      "grade": "等級（A1, 2級, 区分5 など）",
-      "nextRenewalDate": "更新日（YYYY-MM-DD形式）"
-    }
-  ],
-  "keyPersons": [
-    {
-      "name": "氏名",
-      "relationship": "続柄（母, 叔父, 姉 など）",
-      "phone": "電話番号",
-      "role": "役割（緊急連絡先, 医療同意, 金銭管理 など）",
-      "rank": 1
-    }
-  ],
-  "guardians": [
-    {
-      "name": "氏名または法人名",
-      "type": "成年後見/保佐/補助/任意後見",
-      "phone": "連絡先",
-      "organization": "所属（法人の場合）"
-    }
-  ],
-  "hospitals": [
-    {
-      "name": "病院名",
-      "specialty": "診療科",
-      "phone": "電話番号",
-      "doctor": "担当医名"
-    }
-  ],
-  "lifeHistories": [
-    {
-      "era": "時期（幼少期/学齢期/青年期/成人後）",
-      "episode": "エピソード内容",
-      "emotion": "その時の感情・反応"
-    }
-  ],
-  "wishes": [
-    {
-      "content": "願いの内容",
-      "date": "記録日（YYYY-MM-DD形式、今日なら今日の日付）"
+      "source_temp_id": "起点となるノードのtemp_id",
+      "target_temp_id": "終点となるノードのtemp_id",
+      "type": "許可されたリレーションシップタイプ",
+      "properties": { "キー": "値" }
     }
   ]
 }
-```
+
+【抽出例】
+入力: "2026年3月9日、山田太郎さんの支援記録。鈴木支援員が対応。昼食の際、外で大きな工事音が鳴りパニックになった。パニック時は静かな別室に移動させることが効果的だった。今後は突然の大きな音を避けるよう配慮が必要（リスク：パニック）。"
+
+出力:
+{
+  "nodes": [
+    { "temp_id": "c1", "label": "Client", "properties": { "name": "山田太郎" } },
+    { "temp_id": "s1", "label": "Supporter", "properties": { "name": "鈴木" } },
+    { "temp_id": "log1", "label": "SupportLog", "properties": { "date": "2026-03-09", "situation": "食事", "action": "静かな別室に移動させた", "effectiveness": "Effective", "note": "昼食の際、外で大きな工事音が鳴りパニックになった。" } },
+    { "temp_id": "ng1", "label": "NgAction", "properties": { "action": "突然の大きな音", "reason": "パニックを誘発するため", "riskLevel": "Panic" } },
+    { "temp_id": "cp1", "label": "CarePreference", "properties": { "category": "パニック時", "instruction": "静かな別室に移動させる", "priority": "High" } }
+  ],
+  "relationships": [
+    { "source_temp_id": "s1", "target_temp_id": "log1", "type": "LOGGED", "properties": {} },
+    { "source_temp_id": "log1", "target_temp_id": "c1", "type": "ABOUT", "properties": {} },
+    { "source_temp_id": "c1", "target_temp_id": "ng1", "type": "MUST_AVOID", "properties": {} },
+    { "source_temp_id": "c1", "target_temp_id": "cp1", "type": "REQUIRES", "properties": {} }
+  ]
+}
 
 【抽出ルール】
-1. 「〜すると落ち着く」「〜が好き」→ carePreferences
-2. 「〜は嫌がる」「〜するとパニック」「絶対に〜しないで」→ ngActions（最重要！）
-3. 「今日〜した」「〜の対応で効果があった」→ supportLogs（日報・支援記録）
-4. 「〜に連絡して」「〜が後見人」→ keyPersons または guardians
-5. 「来年の○月に更新」→ certificates（日付は2025年12月現在として推定）
-6. 「かかりつけは○○病院」→ hospitals
-
-【supportLogs抽出の重要ポイント】
-- 「今日」「昨日」などの日付表現から実際の日付を推定
-- 「効果的だった」「うまくいった」→ Effective
-- 「変化なし」「いつも通り」→ Neutral
-- 「悪化した」「逆効果」→ Ineffective
-- 記録者名（田中ヘルパー、佐藤施設長など）を必ず抽出
-- 対応の具体的内容を詳細に記録
-
-【禁止事項 - 違反厳禁】
-- JSON以外のテキストを出力しない
-- ```json と ``` で囲んで出力する
-- テキストにない情報を創作しない
-- 「一般的な知的障害者の特徴」などを勝手に追加しない
-- 入力テキストに書かれていないエピソードを作らない
+1. 「〜すると落ち着く」「〜が好き」→ CarePreference ノード + REQUIRES リレーション
+2. 「〜は嫌がる」「〜するとパニック」→ NgAction ノード + MUST_AVOID リレーション（最重要！）
+3. 「今日〜した」「〜の対応で効果があった」→ SupportLog ノード + LOGGED/ABOUT リレーション
+4. 「〜に連絡して」「〜が後見人」→ KeyPerson + HAS_KEY_PERSON または Guardian + HAS_LEGAL_REP
+5. 「来年の○月に更新」→ Certificate ノード + HAS_CERTIFICATE リレーション
+6. 「かかりつけは○○病院」→ Hospital ノード + TREATED_AT リレーション
 
 【最終確認】
 出力前に必ず確認：この情報は入力テキストに明示的に書かれているか？
@@ -194,35 +149,61 @@ def parse_json_from_response(response_text: str) -> dict | None:
         パースされたdict、または失敗時はNone
     """
     try:
-        # ```json ... ``` を抽出
+        # そのままJSONとしてパース試行（新プロンプトは生JSON出力を指示）
+        return json.loads(response_text)
+    except json.JSONDecodeError:
+        pass
+    try:
+        # フォールバック: ```json ... ``` を抽出（LLMが付与した場合）
         pattern = r'```json\s*(.*?)\s*```'
         match = re.search(pattern, response_text, re.DOTALL)
         if match:
             return json.loads(match.group(1))
-        # そのままJSONとしてパース試行
-        return json.loads(response_text)
     except json.JSONDecodeError:
-        return None
+        pass
+    return None
+
+
+def _find_client_name_in_graph(extracted: dict) -> str:
+    """グラフ形式の抽出結果からクライアント名を取得"""
+    for node in extracted.get("nodes", []):
+        if node.get("label") == "Client":
+            return node.get("properties", {}).get("name", "不明")
+    return "不明"
+
+
+def _set_client_name_in_graph(extracted: dict, client_name: str) -> None:
+    """グラフ形式の抽出結果でクライアント名を設定（追記モード用）"""
+    for node in extracted.get("nodes", []):
+        if node.get("label") == "Client":
+            node["properties"]["name"] = client_name
+            return
+    # Client ノードがない場合は追加
+    extracted.setdefault("nodes", []).insert(0, {
+        "temp_id": "c1",
+        "label": "Client",
+        "properties": {"name": client_name}
+    })
 
 
 def extract_from_text(text: str, client_name: str = None) -> dict | None:
     """
     テキストから構造化データを抽出
-    
+
     Args:
         text: 入力テキスト（ナラティブ、面談記録など）
         client_name: 既存クライアント名（追記モードの場合）
-        
+
     Returns:
-        構造化されたdict、または失敗時はNone
+        グラフ形式の dict {nodes: [...], relationships: [...]}、または失敗時は None
     """
     agent = get_agent()
-    
+
     # 追記モードの場合、クライアント名を追加
     prompt_text = text
     if client_name:
         prompt_text = f"【対象クライアント: {client_name}】\n\n{text}"
-    
+
     try:
         log(f"テキスト抽出開始（{len(text)}文字）")
         response = agent.run(
@@ -233,9 +214,9 @@ def extract_from_text(text: str, client_name: str = None) -> dict | None:
 
         if extracted:
             # 追記モードの場合、クライアント名を設定
-            if client_name and extracted.get('client'):
-                extracted['client']['name'] = client_name
-            log(f"抽出成功: クライアント={extracted.get('client', {}).get('name', '不明')}")
+            if client_name:
+                _set_client_name_in_graph(extracted, client_name)
+            log(f"抽出成功: クライアント={_find_client_name_in_graph(extracted)}")
             return extracted
 
         log("JSONパース失敗: AIレスポンスからJSONを抽出できませんでした", "WARN")
@@ -308,4 +289,167 @@ def check_safety_compliance(narrative: str, ng_actions: list) -> dict:
         import traceback
         log(f"安全性チェックエラー: {e}\n{traceback.format_exc()}", "ERROR")
         return {"is_violation": False, "warning": "チェック中にエラーが発生しました", "risk_level": "Unknown"}
+
+
+# =============================================================================
+# グラフ形式 ↔ ツリー形式 変換ユーティリティ
+# =============================================================================
+
+# ノードラベル → ツリーキー + リレーションタイプのマッピング
+_LABEL_TO_TREE_KEY = {
+    "Condition": "conditions",
+    "NgAction": "ngActions",
+    "CarePreference": "carePreferences",
+    "SupportLog": "supportLogs",
+    "Certificate": "certificates",
+    "KeyPerson": "keyPersons",
+    "Guardian": "guardians",
+    "Hospital": "hospitals",
+    "LifeHistory": "lifeHistories",
+    "Wish": "wishes",
+    "Supporter": "_supporters",  # ツリーでは独立キーにしない（内部用）
+}
+
+
+def graph_to_tree(graph: dict) -> dict:
+    """
+    グラフ形式 {nodes, relationships} → 旧ツリー形式に変換
+
+    UI編集画面など、ツリー形式を期待するコードとの互換性のために使用。
+
+    Args:
+        graph: {"nodes": [...], "relationships": [...]}
+
+    Returns:
+        {"client": {...}, "conditions": [...], "ngActions": [...], ...}
+    """
+    tree = {
+        "client": {"name": None, "dob": None, "bloodType": None},
+        "conditions": [],
+        "ngActions": [],
+        "carePreferences": [],
+        "supportLogs": [],
+        "certificates": [],
+        "keyPersons": [],
+        "guardians": [],
+        "hospitals": [],
+        "lifeHistories": [],
+        "wishes": [],
+    }
+
+    # temp_id → label のマップ（リレーション解決用）
+    id_label_map = {}
+    supporter_map = {}  # temp_id → supporter name
+
+    for node in graph.get("nodes", []):
+        label = node.get("label", "")
+        props = node.get("properties", {})
+        temp_id = node.get("temp_id", "")
+        id_label_map[temp_id] = label
+
+        if label == "Client":
+            tree["client"] = {
+                "name": props.get("name"),
+                "dob": props.get("dob"),
+                "bloodType": props.get("bloodType"),
+                "kana": props.get("kana"),
+                "aliases": props.get("aliases", []),
+            }
+        elif label == "Supporter":
+            supporter_map[temp_id] = props.get("name", "")
+        elif label in _LABEL_TO_TREE_KEY:
+            key = _LABEL_TO_TREE_KEY[label]
+            if not key.startswith("_"):
+                tree[key].append(dict(props))
+
+    # SupportLog に supporter 名を埋め込む（リレーションから解決）
+    log_supporter = {}  # log_temp_id → supporter_name
+    for rel in graph.get("relationships", []):
+        if rel.get("type") == "LOGGED":
+            src = rel.get("source_temp_id", "")
+            tgt = rel.get("target_temp_id", "")
+            if src in supporter_map:
+                log_supporter[tgt] = supporter_map[src]
+
+    for i, node in enumerate(graph.get("nodes", [])):
+        if node.get("label") == "SupportLog":
+            temp_id = node.get("temp_id", "")
+            if temp_id in log_supporter:
+                # supportLogs 内の対応する要素に supporter を設定
+                props = node.get("properties", {})
+                for sl in tree["supportLogs"]:
+                    if sl.get("situation") == props.get("situation") and sl.get("date") == props.get("date"):
+                        sl["supporter"] = log_supporter[temp_id]
+                        break
+
+    return tree
+
+
+def tree_to_graph(tree: dict) -> dict:
+    """
+    旧ツリー形式 → グラフ形式 {nodes, relationships} に変換
+
+    UI で編集されたツリー形式データを DB 登録用のグラフ形式に戻すために使用。
+
+    Args:
+        tree: {"client": {...}, "conditions": [...], ...}
+
+    Returns:
+        {"nodes": [...], "relationships": [...]}
+    """
+    nodes = []
+    relationships = []
+    counter = {"n": 0}
+
+    def next_id(prefix="n"):
+        counter["n"] += 1
+        return f"{prefix}{counter['n']}"
+
+    # Client
+    client_id = next_id("c")
+    client_props = {k: v for k, v in tree.get("client", {}).items() if v is not None}
+    nodes.append({"temp_id": client_id, "label": "Client", "properties": client_props})
+
+    # ラベル → (ツリーキー, リレーションタイプ, 方向) のマッピング
+    mappings = [
+        ("conditions", "Condition", "HAS_CONDITION", "client_to_node"),
+        ("ngActions", "NgAction", "MUST_AVOID", "client_to_node"),
+        ("carePreferences", "CarePreference", "REQUIRES", "client_to_node"),
+        ("certificates", "Certificate", "HAS_CERTIFICATE", "client_to_node"),
+        ("keyPersons", "KeyPerson", "HAS_KEY_PERSON", "client_to_node"),
+        ("guardians", "Guardian", "HAS_LEGAL_REP", "client_to_node"),
+        ("hospitals", "Hospital", "TREATED_AT", "client_to_node"),
+        ("lifeHistories", "LifeHistory", "HAS_HISTORY", "client_to_node"),
+        ("wishes", "Wish", "HAS_WISH", "client_to_node"),
+    ]
+
+    for tree_key, label, rel_type, direction in mappings:
+        for item in tree.get(tree_key, []):
+            if not item:
+                continue
+            node_id = next_id()
+            props = {k: v for k, v in item.items() if v is not None and k != "relatedCondition"}
+            nodes.append({"temp_id": node_id, "label": label, "properties": props})
+            relationships.append({
+                "source_temp_id": client_id,
+                "target_temp_id": node_id,
+                "type": rel_type,
+                "properties": {},
+            })
+
+    # SupportLog（supporter → LOGGED → log → ABOUT → client）
+    for sl in tree.get("supportLogs", []):
+        if not sl or not sl.get("action"):
+            continue
+        supporter_name = sl.pop("supporter", None) or sl.pop("supporter", "不明")
+        log_id = next_id("log")
+        supporter_id = next_id("s")
+
+        nodes.append({"temp_id": supporter_id, "label": "Supporter", "properties": {"name": supporter_name}})
+        sl_props = {k: v for k, v in sl.items() if v is not None}
+        nodes.append({"temp_id": log_id, "label": "SupportLog", "properties": sl_props})
+        relationships.append({"source_temp_id": supporter_id, "target_temp_id": log_id, "type": "LOGGED", "properties": {}})
+        relationships.append({"source_temp_id": log_id, "target_temp_id": client_id, "type": "ABOUT", "properties": {}})
+
+    return {"nodes": nodes, "relationships": relationships}
 

@@ -14,7 +14,7 @@ from pathlib import Path
 # プロジェクトルートをパスに追加し lib/ からインポート可能にする
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from lib.db_operations import run_query, is_db_available
+from lib.db_new_operations import run_query, is_db_available
 
 
 # =============================================================================

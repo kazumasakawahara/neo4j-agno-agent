@@ -7,7 +7,7 @@ from datetime import datetime
 # Add parent directory to path to import lib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from lib.db_operations import resolve_client, run_query
+from lib.db_new_operations import resolve_client, run_query
 
 def smart_sos_decision(client_identifier: str, context: str):
     """

@@ -8,7 +8,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sos.api_server import create_smart_sos_message
-from lib.db_operations import run_query
+from lib.db_new_operations import run_query
 
 async def simulate_panic_sos():
     print("🚑 SOS Orchestrator Simulation: Panic at Station")

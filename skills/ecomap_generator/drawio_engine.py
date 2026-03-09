@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 # プロジェクトルートをパスに追加
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from lib.db_operations import run_query, is_db_available
+from lib.db_new_operations import run_query, is_db_available
 
 
 # =============================================================================

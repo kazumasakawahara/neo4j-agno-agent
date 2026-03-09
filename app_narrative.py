@@ -12,8 +12,8 @@ import json
 from datetime import date
 
 # --- ライブラリからインポート ---
-from lib.db_operations import run_query, register_to_database, get_clients_list, get_client_stats, get_support_logs, discover_care_patterns
-from lib.ai_extractor import extract_from_text, check_safety_compliance
+from lib.db_new_operations import run_query, register_to_database, get_clients_list, get_client_stats, get_support_logs, discover_care_patterns
+from lib.ai_extractor import extract_from_text, check_safety_compliance, graph_to_tree, tree_to_graph
 from lib.utils import safe_date_parse, init_session_state, reset_session_state, get_input_example
 from lib.file_readers import read_uploaded_file, get_supported_extensions, check_dependencies
 from skills.report_generator.excel_exporter import export_client_data_to_excel
@@ -170,11 +170,14 @@ def render_input_step():
             extracted = extract_from_text(input_text, selected_client)
             
             if extracted:
-                st.session_state.extracted_data = extracted
-                st.session_state.edited_data = json.loads(json.dumps(extracted))
-                
+                # グラフ形式をツリー形式に変換（UI編集用）
+                st.session_state.extracted_graph = extracted  # グラフ形式を保持
+                tree_data = graph_to_tree(extracted)
+                st.session_state.extracted_data = tree_data
+                st.session_state.edited_data = json.loads(json.dumps(tree_data))
+
                 # --- Safety Check (Rule 1) ---
-                client_name = extracted.get('client', {}).get('name')
+                client_name = tree_data.get('client', {}).get('name')
                 st.session_state.safety_warning = None # Reset
                 
                 if client_name:
@@ -572,7 +575,9 @@ def render_confirm_step():
         if st.button("✅ データベースに登録", type="primary", use_container_width=True):
             with st.spinner("登録中..."):
                 try:
-                    register_to_database(data)
+                    # 編集済みツリー形式をグラフ形式に変換してDB登録
+                    graph_data = tree_to_graph(data)
+                    register_to_database(graph_data)
                     st.session_state.step = 'done'
                     st.rerun()
                 except Exception as e:

@@ -15,7 +15,7 @@ from functools import lru_cache
 import pykakasi
 
 # --- ライブラリからインポート ---
-from lib.db_operations import (
+from lib.db_new_operations import (
     run_query,
     get_clients_list,
     get_clients_list_extended,

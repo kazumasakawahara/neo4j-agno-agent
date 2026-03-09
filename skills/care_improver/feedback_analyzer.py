@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 # Add parent directory to path to import lib
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from lib.db_operations import resolve_client, run_query
+from lib.db_new_operations import resolve_client, run_query
 
 def analyze_feedback(client_identifier: str, days_lookback: int = 30):
     """

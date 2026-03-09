@@ -9,6 +9,7 @@
 - 既存の関係はそのまま維持
 """
 
+import os
 import uuid
 import sys
 from datetime import datetime
@@ -360,3 +361,116 @@ def create_client_with_identity(
             "displayCode": display_code,
             "name": name
         }
+
+
+# =============================================================================
+# 出力マスキング機能
+# =============================================================================
+
+# マスク対象となるフィールド名のデフォルト定義
+_DEFAULT_MASK_FIELDS = {
+    "name": "name",
+    "クライアント": "name",
+    "支援者": "name",
+    "操作者": "name",
+}
+
+
+class Pseudonymizer:
+    """
+    クエリ結果の PII をマスクする出力フィルター
+
+    enabled=False の場合はすべてパススルーする（ダミーモード）。
+    Neo4j 内のデータは一切変更せず、Python 側の表示レイヤーでのみ適用。
+    """
+
+    def __init__(self, enabled: bool = True):
+        self.enabled = enabled
+
+    # ----- 単一値マスク -----
+
+    def mask_name(self, name: str) -> str:
+        """
+        氏名をマスクする（姓のみ表示 + 伏字）
+
+        例: "山田健太" → "山田●●"
+            "田中"     → "田●"
+            1文字      → "●"
+        """
+        if not self.enabled or not name:
+            return name
+
+        if len(name) <= 1:
+            return "●"
+        # 姓＝先頭1文字、名＝残りを伏字
+        return name[0] + "●" * (len(name) - 1)
+
+    def mask_phone(self, phone: str) -> str:
+        """
+        電話番号をマスクする（下4桁を伏字）
+
+        例: "090-1234-5678" → "090-1234-****"
+        """
+        if not self.enabled or not phone:
+            return phone
+
+        digits_only = phone.replace("-", "").replace(" ", "")
+        if len(digits_only) <= 4:
+            return "****"
+        return phone[:-4] + "****"
+
+    # ----- レコード一括マスク -----
+
+    def mask_records(
+        self,
+        records: list[dict],
+        field_rules: dict | None = None,
+    ) -> list[dict]:
+        """
+        クエリ結果のレコードリストにマスクを適用
+
+        Args:
+            records: run_query() の戻り値（dict のリスト）
+            field_rules: フィールド名 → マスク種別 のマッピング
+                         None の場合はデフォルトルールを使用
+                         例: {"name": "name", "phone": "phone"}
+
+        Returns:
+            マスク済みレコードのリスト（元のリストは変更しない）
+        """
+        if not self.enabled or not records:
+            return records
+
+        rules = field_rules or _DEFAULT_MASK_FIELDS
+        masked = []
+
+        for record in records:
+            row = dict(record)  # shallow copy
+            for field, mask_type in rules.items():
+                if field in row and row[field]:
+                    if mask_type == "name":
+                        row[field] = self.mask_name(str(row[field]))
+                    elif mask_type == "phone":
+                        row[field] = self.mask_phone(str(row[field]))
+            masked.append(row)
+
+        return masked
+
+
+# シングルトンインスタンス
+_pseudonymizer_instance: Pseudonymizer | None = None
+
+
+def get_pseudonymizer() -> Pseudonymizer:
+    """
+    Pseudonymizer のシングルトンインスタンスを取得
+
+    PSEUDONYMIZATION_ENABLED 環境変数に基づいて enabled を設定。
+    """
+    global _pseudonymizer_instance
+    if _pseudonymizer_instance is None:
+        enabled = os.getenv(
+            "PSEUDONYMIZATION_ENABLED", "false"
+        ).lower() == "true"
+        _pseudonymizer_instance = Pseudonymizer(enabled=enabled)
+    return _pseudonymizer_instance

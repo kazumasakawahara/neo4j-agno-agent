@@ -8,7 +8,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from lib.db_operations import get_clients_list
+from lib.db_new_operations import get_clients_list
 
 # =============================================================================
 # カスタムCSS

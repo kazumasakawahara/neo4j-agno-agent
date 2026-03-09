@@ -23,7 +23,7 @@ from neo4j import GraphDatabase
 # 親ディレクトリをパスに追加（lib/からインポートするため）
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from lib.db_operations import resolve_client, get_display_name, run_query
+from lib.db_new_operations import resolve_client, get_display_name, run_query
 from lib.ai_extractor import get_agent
 
 # 環境変数読み込み

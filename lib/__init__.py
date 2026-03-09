@@ -2,7 +2,7 @@
 親亡き後支援データベース - 共通ライブラリ
 """
 
-from lib.db_operations import (
+from lib.db_new_operations import (
     get_driver,
     run_query,
     register_to_database,

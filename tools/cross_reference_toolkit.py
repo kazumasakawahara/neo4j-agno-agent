@@ -1,6 +1,6 @@
 import json
 from agno.tools import Toolkit
-from lib.db_operations import resolve_client, run_query
+from lib.db_new_operations import resolve_client, run_query
 
 class CrossReferenceToolkit(Toolkit):
     def __init__(self):

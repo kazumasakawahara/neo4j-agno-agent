@@ -10,7 +10,7 @@ ClientQueryToolkit - クライアント情報取得用ツールキット
 
 import json
 from agno.tools import Toolkit
-from lib.db_operations import run_query, resolve_client
+from lib.db_new_operations import run_query, resolve_client
 
 
 class ClientQueryToolkit(Toolkit):

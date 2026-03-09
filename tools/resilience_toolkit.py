@@ -1,7 +1,7 @@
 import json
 from agno.agent import Agent
 from agno.tools import Toolkit
-from lib.db_operations import run_query
+from lib.db_new_operations import run_query
 
 class ResilienceToolkit(Toolkit):
     def __init__(self):
