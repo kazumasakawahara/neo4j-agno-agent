@@ -52,3 +52,12 @@ claude-skills/ecomap-generator/outputs/
 
 # Node.js
 node_modules/
+
+# Serena (AI tool config)
+.serena/
+
+# Browser app (large binary)
+Google Chrome.app/
+
+# Review queue (local only)
+needs-review/
