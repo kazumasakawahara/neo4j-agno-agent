@@ -61,10 +61,10 @@
 
 | ノードラベル | 柱 | 説明 | 主要プロパティ |
 |---|---|---|---|
-| `Client` | 本人性 | 中心ノード（本人） | name, dob, bloodType, clientId, displayCode, kana |
+| `Client` | 本人性 | 中心ノード（本人） | name, dob, bloodType, clientId, displayCode, kana, summaryEmbedding |
 | `Condition` | ケアの暗黙知 | 特性・医学的診断 | name, diagnosisDate, status |
-| `NgAction` | ケアの暗黙知 | 禁忌事項（**最重要**） | action, reason, riskLevel |
-| `CarePreference` | ケアの暗黙知 | 推奨ケア | category, instruction, priority |
+| `NgAction` | ケアの暗黙知 | 禁忌事項（**最重要**） | action, reason, riskLevel, embedding |
+| `CarePreference` | ケアの暗黙知 | 推奨ケア | category, instruction, priority, embedding |
 | `KeyPerson` | 危機管理 | キーパーソン・緊急連絡先 | name, relationship, phone, role |
 | `Guardian` | 法的基盤 | 成年後見人等 | name, type, phone, organization |
 | `Hospital` | 危機管理 | 医療機関 | name, specialty, phone, doctor |
@@ -72,7 +72,7 @@
 | `PublicAssistance` | 法的基盤 | 公的扶助 | type, grade, startDate |
 | `Organization` | 多機関連携 | 関係機関 | name, type, contact, address |
 | `Supporter` | 多機関連携 | 支援者 | name, role, organization, phone |
-| `SupportLog` | 記録 | 支援記録 | date, situation, action, effectiveness, note, type, duration, nextAction |
+| `SupportLog` | 記録 | 支援記録 | date, situation, action, effectiveness, note, type, duration, nextAction, embedding |
 | `AuditLog` | 監査 | 監査ログ | timestamp, user, action, targetType, targetName, details |
 | `LifeHistory` | 本人性 | 生育歴 | era, episode, emotion |
 | `Wish` | 本人性 | 本人・家族の願い | content, status, date |
@@ -295,6 +295,19 @@ SupportLog の type プロパティで使用する値：
 | idx_auditlog_clientname | AuditLog | clientName | クライアント別監査追跡 |
 | idx_auditlog_user | AuditLog | user | 操作者別監査追跡 |
 
+### ベクトルインデックス（Semantic Search）
+
+| インデックス名 | ノード | プロパティ | 次元数 | 類似度関数 | 目的 |
+|---|---|---|---|---|---|
+| support_log_embedding | SupportLog | embedding | 768 | cosine | 支援記録のセマンティック検索 |
+| care_preference_embedding | CarePreference | embedding | 768 | cosine | ケア指示のセマンティック検索 |
+| ng_action_embedding | NgAction | embedding | 768 | cosine | 禁忌事項のセマンティック検索 |
+| client_summary_embedding | Client | summaryEmbedding | 768 | cosine | クライアントサマリの類似検索 |
+
+> **管理**: `lib/embedding.py::ensure_vector_indexes()` で冪等に作成されます。手動作成は不要です。
+> **embedding プロパティ**: `db.create.setNodeVectorProperty()` で設定してください（通常の SET では正しく格納されません）。
+> **バックフィル**: `uv run python scripts/backfill_embeddings.py --all` で既存ノードに一括付与できます。
+
 ### 全文検索インデックス
 
 | インデックス名 | ノード | プロパティ | 目的 |
@@ -388,3 +401,4 @@ REMOVE sp.office_name, sp.corp_name, sp.service_type,
 |---|---|
 | 2026-02-16 | 初版作成。正式リレーション名の確定、廃止リレーションの明記、LLM向けガイドライン追加 |
 | 2026-03-09 | v2.0 スキーマ改善。インデックス13本追加、UNIQUE制約追加、AUDIT_FOR/FOLLOWSリレーション追加、SupportLog拡張（type/duration/nextAction）、全文検索インデックス追加 |
+| 2026-03-12 | v2.1 ベクトルインデックス4本追加（Gemini Embedding 2, 768次元）。SupportLog/NgAction/CarePreference/Client に embedding プロパティ追加 |
