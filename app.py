@@ -27,6 +27,7 @@ pg = st.navigation({
         st.Page("pages/ecomap.py", title="エコマップ", icon="🗺️"),
     ],
     "活用": [
+        st.Page("pages/semantic_search.py", title="セマンティック検索", icon="🔍"),
         st.Page("pages/claude_guide.py", title="Claude活用ガイド", icon="🤖"),
         st.Page("app_ui.py", title="AIチャット", icon="🛡️"),
     ],

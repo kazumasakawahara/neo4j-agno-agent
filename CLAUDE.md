@@ -86,7 +86,36 @@ See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
 ### AI Models
 
 - **Gemini 2.0 Flash**: Narrative text structuring (extraction) via `lib/ai_extractor.py`
+- **Gemini Embedding 2** (`gemini-embedding-2-preview`): Multimodal embedding generation via `lib/embedding.py`
 - **Claude Desktop**: Natural language database queries via Skills + Neo4j MCP (see `agents/ROUTING.md`)
+
+### Embedding & Semantic Search (`lib/embedding.py`)
+
+Gemini Embedding 2 によるマルチモーダルセマンティック検索機能。768次元ベクトルを Neo4j Vector Index に格納。
+
+**主要関数:**
+- `embed_text(text, task_type, dimensions)` — テキスト → 768次元ベクトル
+- `embed_texts_batch(texts)` — 複数テキスト一括embedding
+- `embed_image(image_path)` — 画像 → ベクトル
+- `ocr_with_gemini(file_path)` — Gemini 2.0 Flash でスキャンPDF/手書きOCR
+- `semantic_search(query_text, index_name, top_k)` — 汎用セマンティック検索
+- `search_support_logs_semantic(query_text, top_k, client_name)` — 支援記録検索
+- `search_ng_actions_semantic(query_text, top_k)` — 禁忌事項検索
+- `ensure_vector_indexes()` — ベクトルインデックス一括作成（冪等）
+- `get_embedding_stats()` — embedding付与率の統計
+
+**自動付与:** `register_to_database()` / `register_support_log()` でノード登録時に SupportLog, NgAction, CarePreference に自動付与（ベストエフォート）。
+
+**バックフィル:** `uv run python scripts/backfill_embeddings.py --all`
+
+**ベクトルインデックス（4つ）:**
+
+| Index Name | Label | Property | Dimensions |
+|------------|-------|----------|------------|
+| `support_log_embedding` | SupportLog | embedding | 768 |
+| `care_preference_embedding` | CarePreference | embedding | 768 |
+| `ng_action_embedding` | NgAction | embedding | 768 |
+| `client_summary_embedding` | Client | summaryEmbedding | 768 |
 
 ## Common Development Tasks
 
@@ -166,9 +195,9 @@ See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for
 ### Node Types
 
 **Core Entities**:
-- `:Client`: Central node (name, dob, bloodType)
-- `:NgAction`: Prohibited actions with risk levels (safety-critical)
-- `:CarePreference`: Recommended care instructions
+- `:Client`: Central node (name, dob, bloodType, summaryEmbedding[768])
+- `:NgAction`: Prohibited actions with risk levels (safety-critical, embedding[768])
+- `:CarePreference`: Recommended care instructions (embedding[768])
 - `:Condition`: Medical diagnoses/characteristics
 
 **Support Network**:
@@ -176,7 +205,7 @@ See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for
 - `:Guardian`: Legal guardians
 - `:Hospital`: Medical providers
 - `:Supporter`: Support staff who log daily care records
-- `:SupportLog`: Daily support records with effectiveness tracking, type, duration, nextAction
+- `:SupportLog`: Daily support records with effectiveness tracking, type, duration, nextAction, embedding[768]
 
 **Legal Documentation**:
 - `:Certificate`: 手帳・受給者証 with `nextRenewalDate`
@@ -231,6 +260,7 @@ neo4j-agno-agent/
 ├── lib/                    # Shared libraries
 │   ├── db_operations.py    # Neo4j operations + dashboard stats
 │   ├── ai_extractor.py     # Gemini extraction logic
+│   ├── embedding.py        # Gemini Embedding 2 + Neo4j vector search
 │   ├── file_readers.py     # File format parsers
 │   ├── voice_input.py      # Web Speech API component
 │   └── utils.py            # Utilities and session state
