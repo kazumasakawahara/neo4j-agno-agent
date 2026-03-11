@@ -480,12 +480,13 @@ def _attach_embeddings(
         log(f"Embedding一括生成スキップ: {e}", "WARN")
 
 
-def _attach_support_log_embedding(log_data: dict) -> None:
+def _attach_support_log_embedding(log_data: dict, element_id: str | None = None) -> None:
     """
     register_support_log() で登録されたSupportLogにembeddingを付与する。
+    elementId で直接特定するため、同一日・同一状況の重複ログがあっても安全。
     """
     text = _EMBEDDING_TEXT_BUILDERS["SupportLog"](log_data)
-    if not text:
+    if not text or not element_id:
         return
 
     try:
@@ -497,19 +498,12 @@ def _attach_support_log_embedding(log_data: dict) -> None:
         embedding = embed_text(text)
         if embedding is None:
             return
-        # date + situation で特定（register_support_log のCREATE直後なので一意に近い）
         run_query(
             """
-            MATCH (log:SupportLog {date: date($date), situation: $situation})
-            WHERE log.embedding IS NULL
-            WITH log LIMIT 1
-            CALL db.create.setNodeVectorProperty(log, 'embedding', $embedding)
+            MATCH (n) WHERE elementId(n) = $id
+            CALL db.create.setNodeVectorProperty(n, 'embedding', $embedding)
             """,
-            {
-                "date": log_data["date"],
-                "situation": log_data["situation"],
-                "embedding": embedding,
-            },
+            {"id": element_id, "embedding": embedding},
         )
         log("SupportLog embedding自動付与完了")
     except Exception as e:
@@ -569,7 +563,7 @@ def register_support_log(log_data: dict, client_name: str) -> dict:
             CREATE (log)-[:FOLLOWS]->(prevLog)
         )
 
-        RETURN log.date as date, log.situation as situation
+        RETURN log.date as date, log.situation as situation, elementId(log) as elementId
     """, {
         "client_name": client_name,
         "supporter": log_data['supporter'],
@@ -585,7 +579,7 @@ def register_support_log(log_data: dict, client_name: str) -> dict:
 
     if result:
         # Embedding自動付与（ベストエフォート）
-        _attach_support_log_embedding(log_data)
+        _attach_support_log_embedding(log_data, element_id=result[0].get("elementId"))
         return {"status": "success", "message": f"支援記録を登録: {log_data['situation']}", "data": result[0]}
     else:
         return {"status": "error", "message": f"クライアント '{client_name}' が見つかりません"}
