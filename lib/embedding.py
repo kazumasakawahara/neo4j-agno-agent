@@ -831,3 +831,232 @@ def get_embedding_stats() -> dict:
             "embedded": embedded[0]["c"] if embedded else 0,
         }
     return stats
+
+
+# =============================================================================
+# クライアント類似度分析
+# =============================================================================
+
+def build_client_summary_text(client_name: str) -> Optional[str]:
+    """
+    Neo4j から Client の関連情報を集約し、embedding用の概要テキストを構築
+
+    Args:
+        client_name: クライアント名
+
+    Returns:
+        構築された概要テキスト、データ不足の場合は None
+    """
+    results = _run_query(
+        """
+        MATCH (c:Client {name: $client_name})
+        OPTIONAL MATCH (c)-[:HAS_CONDITION]->(con:Condition)
+        OPTIONAL MATCH (c)-[:MUST_AVOID]->(ng:NgAction)
+        OPTIONAL MATCH (c)-[:REQUIRES]->(cp:CarePreference)
+        WITH c,
+             collect(DISTINCT con.name) AS conditions,
+             collect(DISTINCT ng.action) AS ngActions,
+             collect(DISTINCT cp.instruction) AS careInstructions
+        OPTIONAL MATCH (log:SupportLog)-[:ABOUT]->(c)
+        WITH c, conditions, ngActions, careInstructions, log
+        ORDER BY log.date DESC
+        LIMIT 5
+        WITH c, conditions, ngActions, careInstructions,
+             collect(log.situation + '→' + COALESCE(log.action, '')) AS recentLogs
+        RETURN c.name AS name,
+               c.dob AS dob,
+               c.bloodType AS bloodType,
+               conditions,
+               ngActions,
+               careInstructions,
+               recentLogs
+        """,
+        {"client_name": client_name},
+    )
+
+    if not results:
+        log(f"クライアントが見つかりません: {client_name}", "WARN")
+        return None
+
+    r = results[0]
+    parts = []
+
+    # 基本情報
+    basic = r.get("name", "")
+    if r.get("dob"):
+        basic += f"、{r['dob']}"
+    if r.get("bloodType"):
+        basic += f"、血液型{r['bloodType']}"
+    parts.append(f"[基本情報] {basic}")
+
+    # 障害・疾患
+    conditions = [c for c in r.get("conditions", []) if c]
+    if conditions:
+        parts.append(f"[障害・疾患] {', '.join(conditions)}")
+
+    # 禁忌事項
+    ng_actions = [a for a in r.get("ngActions", []) if a]
+    if ng_actions:
+        parts.append(f"[禁忌事項] {', '.join(ng_actions)}")
+
+    # ケアの要点
+    care = [c for c in r.get("careInstructions", []) if c]
+    if care:
+        parts.append(f"[ケアの要点] {', '.join(care)}")
+
+    # 主な支援状況
+    logs = [entry for entry in r.get("recentLogs", []) if entry]
+    if logs:
+        parts.append(f"[主な支援状況] {'; '.join(logs)}")
+
+    # 基本情報だけでは類似度分析に不十分
+    if len(parts) <= 1:
+        log(f"クライアント概要テキストの情報不足: {client_name}", "WARN")
+        return None
+
+    text = "\n".join(parts)
+    log(f"クライアント概要テキスト構築完了: {client_name} ({len(text)}文字)")
+    return text
+
+
+def embed_client_summary(
+    client_name: str,
+    dimensions: int = DEFAULT_DIMENSIONS,
+) -> bool:
+    """
+    特定クライアントの summaryEmbedding を生成・付与
+
+    1. build_client_summary_text() で概要テキスト構築
+    2. embed_text(text, task_type="CLUSTERING") でembedding生成
+    3. Neo4j の Client ノードに summaryEmbedding を付与
+
+    Args:
+        client_name: クライアント名
+        dimensions: 出力次元数
+
+    Returns:
+        成功なら True
+    """
+    text = build_client_summary_text(client_name)
+    if not text:
+        return False
+
+    embedding = embed_text(text, task_type="CLUSTERING", dimensions=dimensions)
+    if embedding is None:
+        log(f"Client summaryEmbedding 生成失敗: {client_name}", "ERROR")
+        return False
+
+    try:
+        _run_query(
+            """
+            MATCH (c:Client {name: $name})
+            CALL db.create.setNodeVectorProperty(c, 'summaryEmbedding', $embedding)
+            """,
+            {"name": client_name, "embedding": embedding},
+        )
+        log(f"Client summaryEmbedding 付与完了: {client_name}")
+        return True
+    except Exception as e:
+        log(f"Client summaryEmbedding 付与エラー ({client_name}): {e}", "ERROR")
+        return False
+
+
+def find_similar_clients(
+    client_name: str,
+    top_k: int = 5,
+    exclude_self: bool = True,
+) -> list[dict]:
+    """
+    指定クライアントに支援特性が似ているクライアントを検索
+
+    Args:
+        client_name: 基準となるクライアント名
+        top_k: 返す結果の最大数
+        exclude_self: 自分自身を除外するか
+
+    Returns:
+        [{"name": str, "スコア": float, "conditions": list, ...}, ...]
+    """
+    base = _run_query(
+        """
+        MATCH (c:Client {name: $client_name})
+        WHERE c.summaryEmbedding IS NOT NULL
+        RETURN c.summaryEmbedding AS embedding
+        """,
+        {"client_name": client_name},
+    )
+
+    if not base:
+        log(f"summaryEmbedding が未付与です: {client_name}", "WARN")
+        return []
+
+    query_vec = base[0]["embedding"]
+    top_k_plus = top_k + (1 if exclude_self else 0)
+
+    results = _run_query(
+        """
+        CALL db.index.vector.queryNodes('client_summary_embedding', $top_k_plus, $query_vec)
+        YIELD node, score
+        WHERE ($exclude_self = false OR node.name <> $client_name)
+        OPTIONAL MATCH (node)-[:HAS_CONDITION]->(con:Condition)
+        RETURN node.name AS name,
+               node.dob AS dob,
+               collect(DISTINCT con.name) AS conditions,
+               score AS スコア
+        ORDER BY score DESC
+        LIMIT $top_k
+        """,
+        {
+            "top_k_plus": top_k_plus,
+            "query_vec": query_vec,
+            "client_name": client_name,
+            "exclude_self": exclude_self,
+            "top_k": top_k,
+        },
+    )
+    log(f"類似クライアント検索: {client_name} → {len(results)}件")
+    return results
+
+
+def search_similar_clients_by_text(
+    description: str,
+    top_k: int = 5,
+) -> list[dict]:
+    """
+    テキスト説明から類似クライアントを検索
+
+    新規利用者の特徴を入力し、既存クライアントから類似ケースを探す。
+
+    Args:
+        description: 支援特性の説明（例: "金銭管理が困難、訪問販売の被害歴あり"）
+        top_k: 返す結果の最大数
+
+    Returns:
+        類似クライアントのリスト（スコア付き）
+    """
+    query_embedding = embed_text(
+        description,
+        task_type="RETRIEVAL_QUERY",
+        dimensions=DEFAULT_DIMENSIONS,
+    )
+    if query_embedding is None:
+        return []
+
+    results = _run_query(
+        """
+        CALL db.index.vector.queryNodes('client_summary_embedding', $top_k, $query_embedding)
+        YIELD node, score
+        OPTIONAL MATCH (node)-[:HAS_CONDITION]->(con:Condition)
+        RETURN node.name AS name,
+               node.dob AS dob,
+               collect(DISTINCT con.name) AS conditions,
+               score AS スコア
+        ORDER BY score DESC
+        """,
+        {
+            "top_k": top_k,
+            "query_embedding": query_embedding,
+        },
+    )
+    log(f"テキストベース類似クライアント検索: '{description[:30]}...' → {len(results)}件")
+    return results
