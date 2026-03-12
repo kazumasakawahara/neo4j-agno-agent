@@ -19,6 +19,7 @@ pg = st.navigation({
     "記録・登録": [
         st.Page("app_narrative.py", title="初期登録", icon="📋"),
         st.Page("app_quick_log.py", title="クイック記録", icon="⚡"),
+        st.Page("pages/meeting_record.py", title="面談記録", icon="🎙️"),
     ],
     "管理": [
         st.Page("pages/client_list.py", title="クライアント一覧", icon="👥"),

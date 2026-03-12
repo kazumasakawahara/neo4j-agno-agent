@@ -221,6 +221,7 @@ MERGE_KEYS = {
 # 常に新規作成するノードラベル（MERGE_KEYSに含まれないもの）
 ALLOWED_CREATE_LABELS = {
     "SupportLog", "LifeHistory", "Wish", "AuditLog", "PublicAssistance",
+    "MeetingRecord",
 }
 
 # 許可するノードラベルの全集合（Cypherインジェクション防止）
@@ -232,7 +233,7 @@ ALLOWED_REL_TYPES = {
     "HAS_KEY_PERSON", "HAS_LEGAL_REP", "HAS_CERTIFICATE", "RECEIVES",
     "REGISTERED_AT", "TREATED_AT", "SUPPORTED_BY", "LOGGED", "ABOUT",
     "FOLLOWS", "USES_SERVICE", "HAS_HISTORY", "HAS_WISH", "AUDIT_FOR",
-    "HAS_IDENTITY",
+    "HAS_IDENTITY", "RECORDED",
 }
 
 def register_to_database(extracted_graph: dict, user_name: str = "system") -> dict:

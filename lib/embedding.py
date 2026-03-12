@@ -52,6 +52,26 @@ VECTOR_INDEXES = {
         "property": "summaryEmbedding",
         "dimensions": DEFAULT_DIMENSIONS,
     },
+    "meeting_record_embedding": {
+        "label": "MeetingRecord",
+        "property": "embedding",
+        "dimensions": DEFAULT_DIMENSIONS,
+    },
+    "meeting_record_text_embedding": {
+        "label": "MeetingRecord",
+        "property": "textEmbedding",
+        "dimensions": DEFAULT_DIMENSIONS,
+    },
+}
+
+# 音声MIME タイプのフォールバック用マッピング
+_AUDIO_MIME_TYPES = {
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+    ".flac": "audio/flac",
+    ".aac": "audio/aac",
 }
 
 
@@ -227,6 +247,117 @@ def embed_multimodal(
     except Exception as e:
         log(f"マルチモーダルembedding生成エラー: {e}", "ERROR")
         return None
+
+
+def embed_audio(
+    audio_path: str,
+    dimensions: int = DEFAULT_DIMENSIONS,
+) -> Optional[list[float]]:
+    """
+    音声ファイルからembeddingベクトルを生成（文字起こし不要）
+
+    Args:
+        audio_path: 音声ファイルパス（MP3, WAV 等。最大80秒）
+        dimensions: 出力次元数
+
+    Returns:
+        float のリスト（embeddingベクトル）、失敗時は None
+    """
+    client = get_genai_client()
+    if client is None:
+        return None
+
+    from google.genai import types
+    import mimetypes
+
+    mime_type, _ = mimetypes.guess_type(audio_path)
+    if mime_type is None:
+        import os
+        ext = os.path.splitext(audio_path)[1].lower()
+        mime_type = _AUDIO_MIME_TYPES.get(ext)
+        if mime_type is None:
+            log(f"未対応の音声形式: {audio_path}", "ERROR")
+            return None
+
+    try:
+        with open(audio_path, "rb") as f:
+            audio_bytes = f.read()
+
+        response = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=[
+                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+            ],
+            config=types.EmbedContentConfig(
+                output_dimensionality=dimensions,
+            ),
+        )
+        values = response.embeddings[0].values
+        log(f"音声embedding生成完了: {len(values)}次元, {audio_path}")
+        return list(values)
+    except Exception as e:
+        log(f"音声embedding生成エラー: {e}", "ERROR")
+        return None
+
+
+def transcribe_audio(
+    audio_path: str,
+    instruction: str = "この音声を正確に文字起こししてください。話者が複数いる場合は区別してください。",
+) -> Optional[str]:
+    """
+    Gemini 2.0 Flash で音声をテキストに文字起こし
+
+    Args:
+        audio_path: 音声ファイルパス
+        instruction: 文字起こし指示
+
+    Returns:
+        文字起こしテキスト、失敗時は None
+    """
+    client = get_genai_client()
+    if client is None:
+        return None
+
+    from google.genai import types
+    import mimetypes
+
+    mime_type, _ = mimetypes.guess_type(audio_path)
+    if mime_type is None:
+        import os
+        ext = os.path.splitext(audio_path)[1].lower()
+        mime_type = _AUDIO_MIME_TYPES.get(ext, "audio/mpeg")
+
+    try:
+        with open(audio_path, "rb") as f:
+            audio_bytes = f.read()
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
+                instruction,
+            ],
+        )
+        text = response.text
+        log(f"音声文字起こし完了: {len(text)}文字, {audio_path}")
+        return text
+    except Exception as e:
+        log(f"音声文字起こしエラー: {e}", "ERROR")
+        return None
+
+
+def _get_audio_duration(path: str) -> float:
+    """ffprobe で音声の長さ（秒）を取得。ffprobe がなければ -1 を返す"""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, timeout=10,
+        )
+        return float(result.stdout.strip())
+    except Exception:
+        return -1  # 不明の場合はembedding試行に任せる
 
 
 def embed_texts_batch(
@@ -650,6 +781,87 @@ def search_ng_actions_semantic(
     return results
 
 
+def search_meeting_records_semantic(
+    query_text: str,
+    top_k: int = 10,
+    client_name: Optional[str] = None,
+    index_name: str = "meeting_record_text_embedding",
+) -> list[dict]:
+    """
+    面談記録のセマンティック検索
+
+    Args:
+        query_text: 検索クエリ（例: "服薬の飲み忘れ"）
+        top_k: 返す結果の最大数
+        client_name: クライアント名でフィルタ（オプション）
+        index_name: 使用するインデックス
+            - "meeting_record_text_embedding": テキスト（transcript/note）ベースの検索
+            - "meeting_record_embedding": 音声ネイティブembeddingベースの検索
+
+    Returns:
+        面談記録のリスト（スコア付き）
+    """
+    query_embedding = embed_text(
+        query_text,
+        task_type="RETRIEVAL_QUERY",
+        dimensions=DEFAULT_DIMENSIONS,
+    )
+    if query_embedding is None:
+        return []
+
+    if client_name:
+        results = _run_query(
+            """
+            CALL db.index.vector.queryNodes($index_name, $top_k, $query_embedding)
+            YIELD node, score
+            MATCH (s:Supporter)-[:RECORDED]->(node)-[:ABOUT]->(c:Client)
+            WHERE c.name CONTAINS $client_name
+            RETURN node.date AS 日付,
+                   node.title AS タイトル,
+                   node.duration AS 秒数,
+                   node.filePath AS ファイルパス,
+                   s.name AS 記録者,
+                   c.name AS クライアント,
+                   node.note AS メモ,
+                   COALESCE(left(node.transcript, 100), '') AS 文字起こし抜粋,
+                   score AS スコア
+            ORDER BY score DESC
+            """,
+            {
+                "index_name": index_name,
+                "top_k": top_k * 3,
+                "query_embedding": query_embedding,
+                "client_name": client_name,
+            },
+        )
+    else:
+        results = _run_query(
+            """
+            CALL db.index.vector.queryNodes($index_name, $top_k, $query_embedding)
+            YIELD node, score
+            MATCH (s:Supporter)-[:RECORDED]->(node)-[:ABOUT]->(c:Client)
+            RETURN node.date AS 日付,
+                   node.title AS タイトル,
+                   node.duration AS 秒数,
+                   node.filePath AS ファイルパス,
+                   s.name AS 記録者,
+                   c.name AS クライアント,
+                   node.note AS メモ,
+                   COALESCE(left(node.transcript, 100), '') AS 文字起こし抜粋,
+                   score AS スコア
+            ORDER BY score DESC
+            """,
+            {
+                "index_name": index_name,
+                "top_k": top_k,
+                "query_embedding": query_embedding,
+            },
+        )
+
+    log(f"面談記録セマンティック検索: '{query_text}' → {len(results)}件")
+    return results
+
+
 # =============================================================================
 # バッチembedding付与（既存ノードの一括更新）
 # =============================================================================
@@ -831,6 +1043,127 @@ def get_embedding_stats() -> dict:
             "embedded": embedded[0]["c"] if embedded else 0,
         }
     return stats
+
+
+def register_meeting_record(
+    audio_path: str,
+    client_name: str,
+    supporter_name: str,
+    date: str,
+    title: str = "",
+    note: str = "",
+    auto_transcribe: bool = True,
+) -> dict:
+    """
+    音声ファイルから面談記録を登録
+
+    1. 音声ファイルの長さチェック（80秒超はembeddingスキップ）
+    2. 音声ファイルを embed_audio() でネイティブembedding
+    3. auto_transcribe=True なら transcribe_audio() で文字起こし
+    4. transcript/note のテキストを embed_text() でテキストembedding
+    5. MeetingRecord ノードを作成
+    6. Supporter→RECORDED→MeetingRecord→ABOUT→Client のリレーションを作成
+
+    Returns:
+        {"status": "success", "transcript": str, ...} または {"status": "error", ...}
+    """
+    import os
+
+    if not os.path.exists(audio_path):
+        return {"status": "error", "message": f"音声ファイルが見つかりません: {audio_path}"}
+
+    abs_path = os.path.abspath(audio_path)
+
+    # MIMEタイプ判定
+    import mimetypes
+    mime_type, _ = mimetypes.guess_type(audio_path)
+    if mime_type is None:
+        ext = os.path.splitext(audio_path)[1].lower()
+        mime_type = _AUDIO_MIME_TYPES.get(ext, "audio/mpeg")
+
+    # 音声の長さチェック
+    duration = _get_audio_duration(audio_path)
+    audio_embedding = None
+    if duration <= 80 or duration < 0:
+        # 80秒以下、または長さ不明の場合はembeddingを試行
+        audio_embedding = embed_audio(audio_path)
+        if audio_embedding is None:
+            log("音声embedding生成失敗（テキストembeddingのみで続行）", "WARN")
+    else:
+        log(f"音声が80秒超 ({duration:.1f}秒) のためembeddingスキップ", "WARN")
+
+    # 文字起こし
+    transcript = None
+    if auto_transcribe:
+        transcript = transcribe_audio(audio_path)
+
+    # テキストembedding（transcript + note を結合）
+    text_parts = []
+    if transcript:
+        text_parts.append(transcript)
+    if note:
+        text_parts.append(note)
+    text_for_embedding = "\n".join(text_parts) if text_parts else None
+
+    text_embedding = None
+    if text_for_embedding:
+        text_embedding = embed_text(text_for_embedding, task_type="RETRIEVAL_DOCUMENT")
+
+    # Neo4j に登録
+    try:
+        duration_int = int(duration) if duration > 0 else None
+        _run_query(
+            """
+            MERGE (c:Client {name: $client_name})
+            MERGE (s:Supporter {name: $supporter_name})
+            CREATE (m:MeetingRecord {
+                date: date($date),
+                title: $title,
+                duration: $duration,
+                filePath: $file_path,
+                mimeType: $mime_type,
+                transcript: $transcript,
+                note: $note
+            })
+            CREATE (s)-[:RECORDED]->(m)
+            CREATE (m)-[:ABOUT]->(c)
+            WITH m
+            CALL { WITH m
+                WITH m WHERE $audio_embedding IS NOT NULL
+                CALL db.create.setNodeVectorProperty(m, 'embedding', $audio_embedding)
+            }
+            CALL { WITH m
+                WITH m WHERE $text_embedding IS NOT NULL
+                CALL db.create.setNodeVectorProperty(m, 'textEmbedding', $text_embedding)
+            }
+            RETURN elementId(m) AS id
+            """,
+            {
+                "client_name": client_name,
+                "supporter_name": supporter_name,
+                "date": date,
+                "title": title or f"面談記録 {date}",
+                "duration": duration_int,
+                "file_path": abs_path,
+                "mime_type": mime_type,
+                "transcript": transcript,
+                "note": note or None,
+                "audio_embedding": audio_embedding,
+                "text_embedding": text_embedding,
+            },
+        )
+        log(f"面談記録登録完了: {client_name} ({date})")
+        return {
+            "status": "success",
+            "client_name": client_name,
+            "date": date,
+            "transcript": transcript,
+            "audio_embedding": audio_embedding is not None,
+            "text_embedding": text_embedding is not None,
+        }
+    except Exception as e:
+        log(f"面談記録登録エラー: {e}", "ERROR")
+        return {"status": "error", "message": str(e)}
 
 
 # =============================================================================
