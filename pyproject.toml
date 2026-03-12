@@ -1,7 +1,7 @@
 [project]
 name = "neo4j-agno-agent"
-version = "0.1.0"
-description = "Add your description here"
+version = "1.0.0"
+description = "親亡き後支援データベース - Neo4j + Streamlit + Claude Skills + Gemini"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
