@@ -79,6 +79,7 @@
 | `Identity` | 本人性 | 仮名化用個人情報（将来） | name, dob |
 | `ServiceProvider` | 多機関連携 | 福祉サービス事業所 | name, corporateName, serviceType, wamnetId |
 | `ProviderFeedback` | 多機関連携 | 事業所口コミ | feedbackId, category, content, rating |
+| `MeetingRecord` | 記録 | 面談音声記録 | date, title, duration, filePath, mimeType, transcript, note, embedding, textEmbedding |
 
 ### 生活保護受給者DB（port 7688）
 
@@ -126,6 +127,7 @@
 | `WROTE` | Supporter → ProviderFeedback | — | 口コミ作成者 |
 | `AUDIT_FOR` | AuditLog → Client | — | 監査ログの対象クライアント |
 | `FOLLOWS` | SupportLog → SupportLog | — | 時系列での前の支援記録 |
+| `RECORDED` | Supporter → MeetingRecord | — | 面談記録の作成 |
 
 ### 生活保護受給者DB（port 7688）
 
@@ -303,6 +305,8 @@ SupportLog の type プロパティで使用する値：
 | care_preference_embedding | CarePreference | embedding | 768 | cosine | ケア指示のセマンティック検索 |
 | ng_action_embedding | NgAction | embedding | 768 | cosine | 禁忌事項のセマンティック検索 |
 | client_summary_embedding | Client | summaryEmbedding | 768 | cosine | クライアントサマリの類似検索 |
+| meeting_record_embedding | MeetingRecord | embedding | 768 | cosine | 面談記録の音声ネイティブ検索 |
+| meeting_record_text_embedding | MeetingRecord | textEmbedding | 768 | cosine | 面談記録のテキスト検索 |
 
 > **管理**: `lib/embedding.py::ensure_vector_indexes()` で冪等に作成されます。手動作成は不要です。
 > **embedding プロパティ**: `db.create.setNodeVectorProperty()` で設定してください（通常の SET では正しく格納されません）。
@@ -402,3 +406,4 @@ REMOVE sp.office_name, sp.corp_name, sp.service_type,
 | 2026-02-16 | 初版作成。正式リレーション名の確定、廃止リレーションの明記、LLM向けガイドライン追加 |
 | 2026-03-09 | v2.0 スキーマ改善。インデックス13本追加、UNIQUE制約追加、AUDIT_FOR/FOLLOWSリレーション追加、SupportLog拡張（type/duration/nextAction）、全文検索インデックス追加 |
 | 2026-03-12 | v2.1 ベクトルインデックス4本追加（Gemini Embedding 2, 768次元）。SupportLog/NgAction/CarePreference/Client に embedding プロパティ追加 |
+| 2026-03-12 | v2.2 MeetingRecord ノード・RECORDED リレーション追加。ベクトルインデックス2本追加（meeting_record_embedding, meeting_record_text_embedding）。Client summaryEmbedding による類似度分析対応 |

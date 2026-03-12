@@ -338,6 +338,10 @@ DROP INDEX `support_log_embedding`
 
 5. **Step 3**: file_readers.py のスキャンPDF対応拡張
 
+> **Phase 2 実装済み**: 音声面談記録（機能A）とクライアント類似度分析（機能B）は
+> `feature/audio-and-similarity` ブランチで実装完了。
+> 詳細は `ADVANCED_EMBEDDING_PLAN.md` を参照。
+
 ---
 
 ## 6. テスト手順
