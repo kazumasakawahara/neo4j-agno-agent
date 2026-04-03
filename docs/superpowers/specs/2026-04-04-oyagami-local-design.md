@@ -16,9 +16,16 @@
 - **Phase 1**: ダッシュボード + クライアント管理 + ナラティブ入力 + AIチャット + クイックログ + LLM設定
 - **Phase 2**: セマンティック検索 + エコマップ + 面談記録
 
+### プロジェクト配置
+```
+~/Dev-Work/
+├── neo4j-agno-agent/    # 現行プロジェクト（参照元）
+└── oyagami-local/       # 新プロジェクト（ここが作業ディレクトリ）
+```
+
 ### 制約
 - マシン: Mac 128GB 統合メモリ
-- データベース: 既存 Neo4j Docker コンテナ（port 7687）を共用
+- データベース: 既存 Neo4j Docker コンテナ（port 7687）を共用（~/Dev-Work/neo4j-agno-agent/docker-compose.yml で起動）
 - ネットワーク: 完全ローカル動作（クラウドAPI不使用）
 
 ---
@@ -88,7 +95,8 @@ oyagami-local/
 │   ├── package.json
 │   └── tsconfig.json
 ├── .env
-├── docker-compose.yml          # Neo4j は ~/Dev-Work/neo4j-agno-agent の既存コンテナを使用（新規作成不要）
+├── .env                        # 環境変数
+├── README.md
 ├── scripts/
 └── docs/
 ```
@@ -391,7 +399,7 @@ class ModelManager:
 ## 9. セットアップ手順
 
 ```bash
-# ① リポジトリ作成 & 依存関係インストール
+# ① プロジェクト作成（neo4j-agno-agent と同階層）
 cd ~/Dev-Work
 mkdir oyagami-local && cd oyagami-local
 git init
@@ -418,7 +426,7 @@ cd ..
 ollama pull nomic-embed-text
 # deepseek-r1:70b, llama4, mistral-small, qwen3-coder:30b は既にインストール済み
 
-# ③ 環境設定
+# ③ 環境設定（プロジェクトルート: ~/Dev-Work/oyagami-local/）
 cat > .env << 'EOF'
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USERNAME=neo4j
@@ -437,7 +445,7 @@ EOF
 
 起動:
 ```bash
-# ターミナル1: Neo4j (既存プロジェクト)
+# ターミナル1: Neo4j（既存プロジェクトの docker-compose を使用）
 cd ~/Dev-Work/neo4j-agno-agent && docker-compose up -d
 
 # ターミナル2: バックエンド
@@ -445,6 +453,20 @@ cd ~/Dev-Work/oyagami-local/backend && uv run uvicorn app.main:app --reload --po
 
 # ターミナル3: フロントエンド
 cd ~/Dev-Work/oyagami-local/frontend && pnpm dev
+```
+
+ディレクトリ構成:
+```
+~/Dev-Work/
+├── neo4j-agno-agent/          # 既存（Neo4j Docker + 参照用コード）
+│   ├── docker-compose.yml     # Neo4j コンテナはここから起動
+│   ├── neo4j_data/            # DB データ（共有）
+│   └── ...
+└── oyagami-local/             # 新プロジェクト（作業ディレクトリ）
+    ├── backend/
+    ├── frontend/
+    ├── .env
+    └── ...
 ```
 
 ---
