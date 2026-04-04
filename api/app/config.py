@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     embedding_model: str = "gemini-embedding-2-preview"
 
-    backend_port: int = 8000
+    backend_port: int = 8001
     frontend_port: int = 3001
 
     model_config = {

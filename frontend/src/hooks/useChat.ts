@@ -15,7 +15,9 @@ export function useChat() {
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
-    const ws = new WebSocket("ws://localhost:8000/api/chat/ws");
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
+    const wsUrl = apiBase.replace(/^http/, "ws") + "/api/chat/ws";
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     let currentResponse = "";
 
