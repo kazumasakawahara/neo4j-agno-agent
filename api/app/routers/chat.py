@@ -22,40 +22,52 @@ async def chat_websocket(websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            msg = json.loads(data)
-            user_text = msg.get("content", "")
-            session_id = msg.get("session_id", session_id)
+            try:
+                msg = json.loads(data)
+                user_text = msg.get("content", "")
+                session_id = msg.get("session_id", session_id)
 
-            # Safety First: 現在進行中の危機のみ（情報照会は Gemini に回す）
-            if is_emergency(user_text):
-                await websocket.send_json({
-                    "type": "routing",
-                    "agent": "safety_first",
-                    "decision": "emergency_search",
-                    "reason": "現在進行中の危機を検知",
-                })
-                response = handle_emergency(user_text)
-            else:
-                await websocket.send_json({
-                    "type": "routing",
-                    "agent": "gemini",
-                    "decision": "chat",
-                    "reason": "Gemini 2.0 Flash（DB検索ツール付き）",
-                })
-                response = await chat(user_text, history)
-                # 会話履歴に追加（次のターンでコンテキストとして使用）
-                history.append({"role": "user", "parts": [user_text]})
-                history.append({"role": "model", "parts": [response]})
+                if not user_text:
+                    await websocket.send_json({"type": "done", "session_id": session_id})
+                    continue
 
-            # ストリーミング送信
-            for i in range(0, len(response), 30):
-                await websocket.send_json({
-                    "type": "stream",
-                    "content": response[i:i + 30],
-                    "agent": "gemini",
-                })
+                # Safety First: 現在進行中の危機のみ（情報照会は Gemini に回す）
+                if is_emergency(user_text):
+                    await websocket.send_json({
+                        "type": "routing",
+                        "agent": "safety_first",
+                        "decision": "emergency_search",
+                        "reason": "現在進行中の危機を検知",
+                    })
+                    response = handle_emergency(user_text)
+                else:
+                    await websocket.send_json({
+                        "type": "routing",
+                        "agent": "gemini",
+                        "decision": "chat",
+                        "reason": "Gemini 2.0 Flash（DB検索ツール付き）",
+                    })
+                    response = await chat(user_text, history)
+                    # 会話履歴に追加（次のターンでコンテキストとして使用）
+                    history.append({"role": "user", "parts": [user_text]})
+                    history.append({"role": "model", "parts": [response]})
 
-            await websocket.send_json({"type": "done", "session_id": session_id})
+                # ストリーミング送信
+                for i in range(0, len(response), 30):
+                    await websocket.send_json({
+                        "type": "stream",
+                        "content": response[i:i + 30],
+                        "agent": "gemini",
+                    })
+
+                await websocket.send_json({"type": "done", "session_id": session_id})
+            except json.JSONDecodeError:
+                await websocket.send_json({"type": "stream", "content": "無効なメッセージ形式です。", "agent": "system"})
+                await websocket.send_json({"type": "done", "session_id": session_id})
+            except Exception as e:
+                logger.error(f"Chat processing error: {e}", exc_info=True)
+                await websocket.send_json({"type": "stream", "content": "エラーが発生しました。もう一度お試しください。", "agent": "system"})
+                await websocket.send_json({"type": "done", "session_id": session_id})
 
     except WebSocketDisconnect:
         logger.info(f"Chat session {session_id} disconnected")
