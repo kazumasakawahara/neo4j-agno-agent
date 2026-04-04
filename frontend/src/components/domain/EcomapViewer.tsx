@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ReactFlow,
   MiniMap,
@@ -9,6 +9,8 @@ import {
   BackgroundVariant,
   Handle,
   Position,
+  useNodesState,
+  useEdgesState,
   type Node as ReactFlowNode,
   type Edge as ReactFlowEdge,
   type NodeProps,
@@ -31,17 +33,15 @@ function CircleNode({ data }: NodeProps) {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        cursor: "pointer",
+        cursor: "grab",
         border: `3px solid ${data.color as string}`,
         boxShadow: `0 0 10px ${data.color as string}40`,
-        transition: "transform 0.2s, box-shadow 0.2s",
+        transition: "box-shadow 0.2s",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.transform = "scale(1.1)";
         e.currentTarget.style.boxShadow = `0 0 20px ${data.color as string}80`;
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.transform = "scale(1)";
         e.currentTarget.style.boxShadow = `0 0 10px ${data.color as string}40`;
       }}
     >
@@ -66,9 +66,11 @@ function CircleNode({ data }: NodeProps) {
   );
 }
 
-function calculateLayout(nodes: EcomapNodeType[]): ReactFlowNode[] {
-  const centerX = 0;
-  const centerY = 0;
+const nodeTypes = { circleNode: CircleNode };
+
+function buildNodes(nodes: EcomapNodeType[]): ReactFlowNode[] {
+  const centerX = 400;
+  const centerY = 300;
   const clientNode = nodes.find((n) => n.category === "client");
   const otherNodes = nodes.filter((n) => n.category !== "client");
 
@@ -80,10 +82,11 @@ function calculateLayout(nodes: EcomapNodeType[]): ReactFlowNode[] {
       type: "circleNode",
       position: { x: centerX, y: centerY },
       data: { ...clientNode, isClient: true },
+      draggable: true,
     });
   }
 
-  const radius = Math.max(200, otherNodes.length * 25);
+  const radius = Math.max(200, otherNodes.length * 20);
   otherNodes.forEach((node, i) => {
     const angle = (2 * Math.PI * i) / otherNodes.length - Math.PI / 2;
     result.push({
@@ -94,10 +97,32 @@ function calculateLayout(nodes: EcomapNodeType[]): ReactFlowNode[] {
         y: centerY + radius * Math.sin(angle),
       },
       data: { ...node, isClient: false },
+      draggable: true,
     });
   });
 
   return result;
+}
+
+function buildEdges(edges: EcomapData["edges"]): ReactFlowEdge[] {
+  return edges.map((e, i) => ({
+    id: `edge-${i}`,
+    source: e.source,
+    target: e.target,
+    label: e.label,
+    type: "default",
+    style: { stroke: "#666", strokeWidth: 1.5 },
+    labelStyle: { fill: "#aaa", fontSize: 9 },
+    labelBgStyle: { fill: "#333", fillOpacity: 0.8 },
+    labelBgPadding: [4, 2] as [number, number],
+    labelBgBorderRadius: 3,
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: "#666",
+      width: 15,
+      height: 15,
+    },
+  }));
 }
 
 interface Props {
@@ -106,34 +131,14 @@ interface Props {
 
 export function EcomapViewer({ data }: Props) {
   const [selectedNode, setSelectedNode] = useState<EcomapNodeType | null>(null);
+  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes(data.nodes));
+  const [edges, setEdges, onEdgesChange] = useEdgesState(buildEdges(data.edges));
 
-  const nodeTypes = useMemo(() => ({ circleNode: CircleNode }), []);
-
-  const flowNodes = useMemo(() => calculateLayout(data.nodes), [data.nodes]);
-
-  const flowEdges: ReactFlowEdge[] = useMemo(
-    () =>
-      data.edges.map((e, i) => ({
-        id: `edge-${i}`,
-        source: e.source,
-        target: e.target,
-        label: e.label,
-        type: "default",
-        animated: false,
-        style: { stroke: "#666", strokeWidth: 1.5 },
-        labelStyle: { fill: "#aaa", fontSize: 9 },
-        labelBgStyle: { fill: "#333", fillOpacity: 0.8 },
-        labelBgPadding: [4, 2] as [number, number],
-        labelBgBorderRadius: 3,
-        markerEnd: {
-          type: MarkerType.ArrowClosed,
-          color: "#666",
-          width: 15,
-          height: 15,
-        },
-      })),
-    [data.edges]
-  );
+  // データが変わったらノードとエッジを再構築
+  useEffect(() => {
+    setNodes(buildNodes(data.nodes));
+    setEdges(buildEdges(data.edges));
+  }, [data, setNodes, setEdges]);
 
   const onNodeClick = useCallback(
     (_: React.MouseEvent, node: ReactFlowNode) => {
@@ -153,10 +158,13 @@ export function EcomapViewer({ data }: Props) {
       }}
     >
       <ReactFlow
-        nodes={flowNodes}
-        edges={flowEdges}
+        nodes={nodes}
+        edges={edges}
         nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         onNodeClick={onNodeClick}
+        nodesDraggable={true}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         style={{ background: "#2a2a2a" }}
