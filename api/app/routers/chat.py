@@ -16,7 +16,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 async def chat_websocket(websocket: WebSocket):
     await websocket.accept()
     session_id = str(uuid.uuid4())
-    history = []
+    # Gemini の会話履歴（function calling 対応のため chat() 内で管理）
+    history: list[dict] = []
 
     try:
         while True:
@@ -25,12 +26,13 @@ async def chat_websocket(websocket: WebSocket):
             user_text = msg.get("content", "")
             session_id = msg.get("session_id", session_id)
 
+            # Safety First: 現在進行中の危機のみ（情報照会は Gemini に回す）
             if is_emergency(user_text):
                 await websocket.send_json({
                     "type": "routing",
                     "agent": "safety_first",
                     "decision": "emergency_search",
-                    "reason": "緊急キーワード検知",
+                    "reason": "現在進行中の危機を検知",
                 })
                 response = handle_emergency(user_text)
             else:
@@ -38,16 +40,18 @@ async def chat_websocket(websocket: WebSocket):
                     "type": "routing",
                     "agent": "gemini",
                     "decision": "chat",
-                    "reason": "通常応答",
+                    "reason": "Gemini 2.0 Flash（DB検索ツール付き）",
                 })
                 response = await chat(user_text, history)
-                history.append({"role": "user", "content": user_text})
-                history.append({"role": "model", "content": response})
+                # 会話履歴に追加（次のターンでコンテキストとして使用）
+                history.append({"role": "user", "parts": [user_text]})
+                history.append({"role": "model", "parts": [response]})
 
-            for i in range(0, len(response), 20):
+            # ストリーミング送信
+            for i in range(0, len(response), 30):
                 await websocket.send_json({
                     "type": "stream",
-                    "content": response[i:i + 20],
+                    "content": response[i:i + 30],
                     "agent": "gemini",
                 })
 

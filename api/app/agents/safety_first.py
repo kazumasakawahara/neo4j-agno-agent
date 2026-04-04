@@ -2,11 +2,19 @@
 import re
 from app.lib.db_operations import run_query
 
-EMERGENCY_KEYWORDS = {"パニック", "SOS", "事故", "発作", "倒れた", "救急", "助けて", "緊急"}
+# 現在進行中の危機を示すキーワードのみ（情報照会は Gemini に任せる）
+CRISIS_KEYWORDS = {"パニック中", "倒れた", "倒れている", "SOS", "発作が", "救急車", "助けて", "意識がない"}
+
+# 情報照会として Gemini に回すべきキーワード（Safety First を発動しない）
+INQUIRY_INDICATORS = {"教えて", "調べて", "確認", "一覧", "リスト", "知りたい"}
 
 
 def is_emergency(text: str) -> bool:
-    return any(kw in text for kw in EMERGENCY_KEYWORDS)
+    """現在進行中の危機かどうかを判定。情報照会は除外。"""
+    # まず情報照会かどうかを確認
+    if any(kw in text for kw in INQUIRY_INDICATORS):
+        return False
+    return any(kw in text for kw in CRISIS_KEYWORDS)
 
 
 def handle_emergency(text: str) -> str:
