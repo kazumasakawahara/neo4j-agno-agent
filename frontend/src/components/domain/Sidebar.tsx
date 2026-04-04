@@ -57,7 +57,7 @@ export function Sidebar() {
         })}
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground space-y-1">
-        <div>Gemini: {status?.gemini_available ? "●" : "○"}</div>
+        <div>Chat: {status?.chat_provider === "claude" ? "Claude" : "Gemini"} {(status?.chat_provider === "claude" ? status?.claude_available : status?.gemini_available) ? "●" : "○"}</div>
         <div>Neo4j: {status?.neo4j_available ? "●" : "○"}</div>
       </div>
     </aside>

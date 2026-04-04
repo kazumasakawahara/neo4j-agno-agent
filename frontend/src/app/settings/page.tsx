@@ -11,28 +11,66 @@ export default function SettingsPage() {
     refetchInterval: 10000,
   });
 
+  const providerLabel = status?.chat_provider === "claude" ? "Claude" : "Gemini";
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <h2 className="text-2xl font-bold">システム設定</h2>
-      <div className="flex gap-4">
-        <Badge variant={status?.gemini_available ? "default" : "destructive"}>
-          Gemini API: {status?.gemini_available ? "接続中" : "未設定"}
-        </Badge>
-        <Badge variant={status?.neo4j_available ? "default" : "destructive"}>
-          Neo4j: {status?.neo4j_available ? "接続中" : "未接続"}
-        </Badge>
-      </div>
+
+      {/* 接続状態 */}
       <Card>
-        <CardHeader><CardTitle className="text-base">AI モデル</CardTitle></CardHeader>
-        <CardContent className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">テキスト生成</span>
-            <span>{status?.gemini_model || "gemini-2.0-flash"}</span>
+        <CardHeader><CardTitle className="text-base">接続状態</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Gemini API</span>
+            <Badge variant={status?.gemini_available ? "default" : "destructive"}>
+              {status?.gemini_available ? "接続中" : "未設定"}
+            </Badge>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Embedding</span>
-            <span>{status?.embedding_model || "gemini-embedding-2-preview"}</span>
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Claude API (Anthropic)</span>
+            <Badge variant={status?.claude_available ? "default" : "destructive"}>
+              {status?.claude_available ? "接続中" : "未設定"}
+            </Badge>
           </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Neo4j</span>
+            <Badge variant={status?.neo4j_available ? "default" : "destructive"}>
+              {status?.neo4j_available ? "接続中" : "未接続"}
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* チャットプロバイダー */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">チャット AI</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">使用中のプロバイダー</span>
+            <Badge variant="outline">{providerLabel}</Badge>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">モデル</span>
+            <span className="text-sm font-mono">{status?.chat_model || "-"}</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            .env の CHAT_PROVIDER で切替（gemini / claude）。API サーバー再起動で反映。
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Embedding */}
+      <Card>
+        <CardHeader><CardTitle className="text-base">Embedding</CardTitle></CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">モデル</span>
+            <span className="text-sm font-mono">{status?.embedding_model || "-"}</span>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Embedding は常に Gemini Embedding 2 を使用（チャットプロバイダーとは独立）。
+          </p>
         </CardContent>
       </Card>
     </div>

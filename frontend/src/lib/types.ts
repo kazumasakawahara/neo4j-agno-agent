@@ -34,8 +34,10 @@ export interface ActivityEntry {
 
 export interface SystemStatus {
   gemini_available: boolean;
+  claude_available: boolean;
   neo4j_available: boolean;
-  gemini_model: string;
+  chat_provider: string;
+  chat_model: string;
   embedding_model: string;
 }
 
