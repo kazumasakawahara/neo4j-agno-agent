@@ -6,6 +6,6 @@ def test_default_dimensions():
 
 
 def test_vector_indexes_defined():
-    assert "support_log_embedding" in VECTOR_INDEXES
+    assert "support_log_vector_index" in VECTOR_INDEXES
     assert "ng_action_embedding" in VECTOR_INDEXES
     assert "client_summary_embedding" in VECTOR_INDEXES

@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import type { SemanticSearchResult } from "@/lib/types";
 
 const INDEX_OPTIONS = [
-  { value: "support_log_embedding", label: "支援記録" },
+  { value: "support_log_vector_index", label: "支援記録" },
   { value: "care_preference_embedding", label: "ケア指示" },
   { value: "ng_action_embedding", label: "禁忌事項" },
   { value: "client_summary_embedding", label: "クライアント概要" },
@@ -16,7 +16,7 @@ const INDEX_OPTIONS = [
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const [indexName, setIndexName] = useState("support_log_embedding");
+  const [indexName, setIndexName] = useState("support_log_vector_index");
   const [results, setResults] = useState<SemanticSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);

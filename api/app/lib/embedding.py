@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_DIMENSIONS = 768
 
 VECTOR_INDEXES = {
-    "support_log_embedding": {"label": "SupportLog", "property": "embedding", "dimensions": DEFAULT_DIMENSIONS},
+    "support_log_vector_index": {"label": "SupportLog", "property": "embedding", "dimensions": DEFAULT_DIMENSIONS},
     "care_preference_embedding": {"label": "CarePreference", "property": "embedding", "dimensions": DEFAULT_DIMENSIONS},
     "ng_action_embedding": {"label": "NgAction", "property": "embedding", "dimensions": DEFAULT_DIMENSIONS},
     "client_summary_embedding": {"label": "Client", "property": "summaryEmbedding", "dimensions": DEFAULT_DIMENSIONS},

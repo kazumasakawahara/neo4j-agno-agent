@@ -28,16 +28,27 @@ async def search_semantic(request: SemanticSearchRequest):
     query_embedding = await embed_text(request.query)
     if not query_embedding:
         return []
-    results = await semantic_search(
+    results = semantic_search(
         query_embedding=query_embedding,
         index_name=request.index_name,
         top_k=request.top_k,
     )
+
+    # Neo4j 固有型を文字列に変換、embedding ベクトルは除外
+    EXCLUDE_KEYS = {"embedding", "summaryEmbedding", "textEmbedding"}
+
+    def _sanitize(props: dict) -> dict:
+        return {
+            k: str(v) if v is not None and not isinstance(v, (str, int, float, bool)) else v
+            for k, v in props.items()
+            if k not in EXCLUDE_KEYS
+        }
+
     return [
         SemanticSearchResult(
             score=r["score"],
-            node_label=request.index_name.replace("_embedding", "").replace("_", " ").title(),
-            properties=r["node"],
+            node_label=request.index_name.replace("_embedding", "").replace("_vector_index", "").replace("_", " ").title(),
+            properties=_sanitize(r["node"]),
         )
         for r in results
     ]
