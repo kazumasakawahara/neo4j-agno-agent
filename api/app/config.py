@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     claude_model: str = "claude-haiku-4-5-20251001"
 
-    # チャットで使用するプロバイダー: "gemini" or "claude"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
+
+    # チャットで使用するプロバイダー: "gemini" / "claude" / "openai"
     chat_provider: str = "gemini"
 
     backend_port: int = 8001
