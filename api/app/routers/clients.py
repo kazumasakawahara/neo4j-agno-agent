@@ -5,9 +5,36 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, HTTPException, Query
-
 from app.lib.db_operations import run_query
 from app.lib.utils import calculate_age
+
+_KANA_ROW_MAP = {
+    "あ": "あいうえお",
+    "か": "かきくけこがぎぐげご",
+    "さ": "さしすせそざじずぜぞ",
+    "た": "たちつてとだぢづでど",
+    "な": "なにぬねの",
+    "は": "はひふへほばびぶべぼぱぴぷぺぽ",
+    "ま": "まみむめも",
+    "や": "やゆよ",
+    "ら": "らりるれろ",
+    "わ": "わをん",
+}
+
+
+def _name_to_kana(name: str) -> str:
+    """漢字名をひらがなに変換（pykakasi使用）"""
+    from pykakasi import kakasi as Kakasi
+
+    kks = Kakasi()
+    result = kks.convert(name)
+    return "".join(item["hira"] for item in result)
+
+
+def _matches_kana_row(kana: str, row_prefix: str) -> bool:
+    """かな行の先頭文字でフィルタ（あ行→あいうえお のいずれかで始まるか）"""
+    chars = _KANA_ROW_MAP.get(row_prefix, row_prefix)
+    return any(kana.startswith(c) for c in chars)
 from app.schemas.client import (
     CarePreference,
     ClientDetail,
@@ -49,8 +76,9 @@ def list_clients(
 
         summaries: list[ClientSummary] = []
         for row in rows:
-            kana: str | None = row.get("kana")
-            if kana_prefix and (not kana or not kana.startswith(kana_prefix)):
+            # kana プロパティがなければ pykakasi で名前から自動変換
+            kana: str | None = row.get("kana") or _name_to_kana(row["name"])
+            if kana_prefix and not _matches_kana_row(kana, kana_prefix):
                 continue
 
             dob = row.get("dob")
