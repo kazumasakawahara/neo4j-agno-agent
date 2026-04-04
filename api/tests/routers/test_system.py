@@ -7,4 +7,5 @@ def test_system_status(client):
     data = resp.json()
     assert "gemini_available" in data
     assert "neo4j_available" in data
-    assert "gemini_model" in data
+    assert "chat_provider" in data
+    assert "chat_model" in data

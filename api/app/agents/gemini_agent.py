@@ -277,44 +277,37 @@ async def extract_from_text(text: str, client_name: str | None = None) -> dict |
 
 
 async def chat(message: str, history: list[dict] | None = None) -> str:
-    """Chat with Gemini using function calling for DB access.
+    """Chat using the configured provider (Gemini or Claude) with function calling."""
+    provider = settings.chat_provider
+    if provider == "claude" and settings.anthropic_api_key:
+        return await _chat_claude(message, history)
+    return await _chat_gemini(message, history)
 
-    Gemini can call tools to search the Neo4j database for client information,
-    then synthesize a contextual response.
-    """
+
+async def _chat_gemini(message: str, history: list[dict] | None = None) -> str:
+    """Chat with Gemini using function calling for DB access."""
     try:
         model = _get_chat_model()
         chat_session = model.start_chat(history=history or [])
-
         response = chat_session.send_message(message)
 
-        # Function calling loop: Gemini may call tools, we execute and return results
         max_rounds = 5
         for _ in range(max_rounds):
-            # Check if Gemini wants to call a function
             func_calls = [
                 part.function_call
                 for part in response.candidates[0].content.parts
                 if part.function_call.name
             ]
-
             if not func_calls:
-                # No function calls — return the text response
                 break
 
-            # Execute each function call
             func_responses = []
             for fc in func_calls:
                 fn_name = fc.name
                 fn_args = dict(fc.args) if fc.args else {}
-                logger.info(f"Tool call: {fn_name}({fn_args})")
-
+                logger.info(f"Gemini tool call: {fn_name}({fn_args})")
                 fn = TOOL_DISPATCH.get(fn_name)
-                if fn:
-                    result = fn(**fn_args)
-                else:
-                    result = {"error": f"Unknown function: {fn_name}"}
-
+                result = fn(**fn_args) if fn else {"error": f"Unknown: {fn_name}"}
                 func_responses.append(
                     genai.protos.Part(
                         function_response=genai.protos.FunctionResponse(
@@ -323,20 +316,125 @@ async def chat(message: str, history: list[dict] | None = None) -> str:
                         )
                     )
                 )
-
-            # Send function results back to Gemini
             response = chat_session.send_message(func_responses)
 
-        # Extract text from final response
-        text_parts = [
-            part.text
-            for part in response.candidates[0].content.parts
-            if part.text
-        ]
+        text_parts = [p.text for p in response.candidates[0].content.parts if p.text]
+        return "\n".join(text_parts) if text_parts else "回答を生成できませんでした。"
+    except Exception as e:
+        logger.error(f"Gemini chat failed: {e}", exc_info=True)
+        return f"エラーが発生しました: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Claude (Anthropic) チャット — tool_use 対応
+# ---------------------------------------------------------------------------
+
+CLAUDE_TOOLS = [
+    {
+        "name": "search_client_info",
+        "description": "クライアントの基本情報（名前、生年月日、血液型、障害・状態）を検索します。",
+        "input_schema": {"type": "object", "properties": {"client_name": {"type": "string", "description": "クライアント名"}}, "required": ["client_name"]},
+    },
+    {
+        "name": "search_emergency_contacts",
+        "description": "クライアントの緊急連絡先（キーパーソン：家族・親族等）を検索します。",
+        "input_schema": {"type": "object", "properties": {"client_name": {"type": "string", "description": "クライアント名"}}, "required": ["client_name"]},
+    },
+    {
+        "name": "search_ng_actions",
+        "description": "クライアントの禁忌事項（絶対にしてはいけないこと）を検索します。パニック時・危険時に重要。",
+        "input_schema": {"type": "object", "properties": {"client_name": {"type": "string", "description": "クライアント名"}}, "required": ["client_name"]},
+    },
+    {
+        "name": "search_care_preferences",
+        "description": "クライアントの推奨ケア（こうすると落ち着く、こうするとよい）を検索します。",
+        "input_schema": {"type": "object", "properties": {"client_name": {"type": "string", "description": "クライアント名"}}, "required": ["client_name"]},
+    },
+    {
+        "name": "search_hospital",
+        "description": "クライアントのかかりつけ病院・医療機関を検索します。体調不良時に必要。",
+        "input_schema": {"type": "object", "properties": {"client_name": {"type": "string", "description": "クライアント名"}}, "required": ["client_name"]},
+    },
+    {
+        "name": "search_guardian",
+        "description": "クライアントの後見人・法的代理人を検索します。金銭トラブルや法的問題時に必要。",
+        "input_schema": {"type": "object", "properties": {"client_name": {"type": "string", "description": "クライアント名"}}, "required": ["client_name"]},
+    },
+    {
+        "name": "search_support_logs",
+        "description": "クライアントの最近の支援記録を検索します。最近の様子や支援傾向の確認に使用。",
+        "input_schema": {"type": "object", "properties": {"client_name": {"type": "string", "description": "クライアント名"}, "limit": {"type": "integer", "description": "取得件数（デフォルト5）"}}, "required": ["client_name"]},
+    },
+]
+
+
+async def _chat_claude(message: str, history: list[dict] | None = None) -> str:
+    """Chat with Claude Haiku using tool_use for DB access."""
+    import anthropic
+
+    try:
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+        # 会話履歴を Anthropic 形式に変換
+        messages = []
+        if history:
+            for h in history:
+                role = h.get("role", "user")
+                content = h.get("parts", [h.get("content", "")])[0] if isinstance(h.get("parts"), list) else h.get("content", "")
+                if role == "model":
+                    role = "assistant"
+                messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": message})
+
+        response = client.messages.create(
+            model=settings.claude_model,
+            max_tokens=4096,
+            system=CHAT_SYSTEM_PROMPT,
+            tools=CLAUDE_TOOLS,
+            messages=messages,
+        )
+
+        # Tool use loop
+        max_rounds = 5
+        for _ in range(max_rounds):
+            if response.stop_reason != "tool_use":
+                break
+
+            # Execute tool calls
+            tool_results = []
+            for block in response.content:
+                if block.type == "tool_use":
+                    fn_name = block.name
+                    fn_args = block.input
+                    logger.info(f"Claude tool call: {fn_name}({fn_args})")
+
+                    fn = TOOL_DISPATCH.get(fn_name)
+                    result = fn(**fn_args) if fn else {"error": f"Unknown: {fn_name}"}
+
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result, ensure_ascii=False, default=str),
+                    })
+
+            # Send tool results back
+            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "user", "content": tool_results})
+
+            response = client.messages.create(
+                model=settings.claude_model,
+                max_tokens=4096,
+                system=CHAT_SYSTEM_PROMPT,
+                tools=CLAUDE_TOOLS,
+                messages=messages,
+            )
+
+        # Extract text
+        text_parts = [b.text for b in response.content if b.type == "text"]
         return "\n".join(text_parts) if text_parts else "回答を生成できませんでした。"
 
     except Exception as e:
-        logger.error(f"Chat failed: {e}", exc_info=True)
+        logger.error(f"Claude chat failed: {e}", exc_info=True)
         return f"エラーが発生しました: {e}"
 
 

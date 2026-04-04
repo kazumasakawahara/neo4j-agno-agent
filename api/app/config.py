@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     embedding_model: str = "gemini-embedding-2-preview"
 
+    anthropic_api_key: str = ""
+    claude_model: str = "claude-haiku-4-5-20251001"
+
+    # チャットで使用するプロバイダー: "gemini" or "claude"
+    chat_provider: str = "gemini"
+
     backend_port: int = 8001
     frontend_port: int = 3001
 
