@@ -102,7 +102,7 @@ export default function EcomapPage() {
           </CardContent>
         </Card>
       ) : ecomapData ? (
-        <EcomapViewer data={ecomapData} />
+        <EcomapViewer key={`${selectedClient}-${selectedTemplate}`} data={ecomapData} />
       ) : null}
 
       {/* Legend */}
