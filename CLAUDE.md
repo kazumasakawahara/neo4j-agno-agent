@@ -30,7 +30,30 @@ See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
 
 ## Architecture
 
-### 3-Layer Workflow
+### Next.js + FastAPI Architecture (v2.0)
+
+| Layer | Tool | Port | Purpose |
+|-------|------|------|---------|
+| Frontend | Next.js + shadcn/ui | 3001 | モダン業務UI（全9画面） |
+| API Server | FastAPI | 8000 | REST + WebSocket バックエンド |
+| MCP Server | server.py | - | Claude Desktop 連携（既存） |
+| SOS API | FastAPI | 8080 | 緊急通知 + LINE（既存） |
+| Mobile API | FastAPI | 8080 | モバイル入力（既存） |
+
+#### 起動方法（Next.js版）
+```bash
+# API サーバー
+cd api && uv run uvicorn app.main:app --reload --port 8000
+
+# フロントエンド
+cd frontend && pnpm dev --port 3001
+
+# ブラウザで http://localhost:3001 を開く
+```
+
+> **Note**: 旧 Streamlit UI (`app.py`, `app_narrative.py`, `app_quick_log.py`) は `archive/` に退避済み。
+
+### 3-Layer Workflow (Legacy Reference)
 
 | Layer | Tool | Purpose | Color |
 |-------|------|---------|-------|
@@ -251,13 +274,20 @@ See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for
 
 ```
 neo4j-agno-agent/
-├── app.py                  # Dashboard entry point (st.navigation)
-├── app_narrative.py        # Layer 1: Initial registration UI
-├── app_quick_log.py        # Layer 2: Quick logging UI
-├── app_ui.py               # Agno/Gemini chat UI
+├── api/                    # NEW: FastAPI + Gemini バックエンド
+│   ├── app/
+│   │   ├── agents/         # Gemini Agent + Safety First
+│   │   ├── routers/        # 9 API ルーター
+│   │   ├── lib/            # 共有ライブラリ（lib/から移植）
+│   │   └── schemas/        # Pydantic スキーマ
+│   └── tests/
+├── frontend/               # NEW: Next.js + shadcn/ui
+│   ├── src/app/            # 9ページ
+│   └── src/components/     # UIコンポーネント
+├── archive/                # 旧Streamlit UI（退避済み）
 ├── server.py               # MCP server for Claude Desktop
 ├── main.py                 # CLI agent entry point (legacy)
-├── pages/                  # Dashboard sub-pages
+├── pages/                  # Dashboard sub-pages (archived)
 │   ├── home.py             # Dashboard home with stats & workflow cards
 │   ├── client_list.py      # Searchable client list
 │   ├── claude_guide.py     # Claude Desktop usage guide
