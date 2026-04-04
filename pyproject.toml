@@ -24,3 +24,8 @@ dependencies = [
     "uvicorn>=0.32.0",
     "weasyprint>=67.0",
 ]
+
+[tool.uv.workspace]
+members = [
+    "api",
+]
