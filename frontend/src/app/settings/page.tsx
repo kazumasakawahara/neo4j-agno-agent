@@ -5,10 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 
 export default function SettingsPage() {
-  const { data: status } = useQuery({
+  const { data: status, isError } = useQuery({
     queryKey: ["system-status"],
     queryFn: api.system.status,
     refetchInterval: 10000,
+    retry: 1,
   });
 
   const providerLabel = status?.chat_provider === "claude" ? "Claude" : "Gemini";
@@ -16,6 +17,10 @@ export default function SettingsPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <h2 className="text-2xl font-bold">システム設定</h2>
+
+      {isError && (
+        <p className="text-sm text-destructive">システム状態の取得に失敗しました。APIサーバーが起動しているか確認してください。</p>
+      )}
 
       {/* 接続状態 */}
       <Card>

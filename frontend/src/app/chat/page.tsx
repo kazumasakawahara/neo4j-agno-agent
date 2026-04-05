@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useChat } from "@/hooks/useChat";
 
 export default function ChatPage() {
-  const { messages, isLoading, agentInfo, sendMessage } = useChat();
+  const { messages, isLoading, agentInfo, error, sendMessage, clearError } = useChat();
   const [input, setInput] = useState("");
 
   const handleSend = () => {
@@ -49,6 +49,14 @@ export default function ChatPage() {
           )}
         </div>
       </ScrollArea>
+
+      {/* Error */}
+      {error && (
+        <div className="mb-2 flex items-center gap-2">
+          <p className="text-sm text-destructive flex-1">{error}</p>
+          <Button variant="ghost" size="sm" onClick={clearError}>✕</Button>
+        </div>
+      )}
 
       {/* Input */}
       <div className="flex gap-2">

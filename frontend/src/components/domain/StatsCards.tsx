@@ -4,7 +4,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
 
 export function StatsCards() {
-  const { data } = useQuery({ queryKey: ["dashboard-stats"], queryFn: api.dashboard.stats });
+  const { data, isError } = useQuery({ queryKey: ["dashboard-stats"], queryFn: api.dashboard.stats, retry: 1 });
+
+  if (isError) {
+    return <p className="text-sm text-destructive">統計情報の取得に失敗しました</p>;
+  }
+
   const stats = [
     { title: "利用者数", value: data?.client_count ?? "-" },
     { title: "今月の記録", value: data?.log_count_this_month ?? "-" },

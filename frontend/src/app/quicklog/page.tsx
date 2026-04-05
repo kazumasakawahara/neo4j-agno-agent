@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 
 export default function QuickLogPage() {
-  const { data: clients } = useQuery({ queryKey: ["clients"], queryFn: () => api.clients.list() });
+  const { data: clients, isError: clientsError } = useQuery({ queryKey: ["clients"], queryFn: () => api.clients.list(), retry: 1 });
   const [selectedClient, setSelectedClient] = useState("");
   const [note, setNote] = useState("");
   const [situation, setSituation] = useState("");
@@ -32,11 +32,15 @@ export default function QuickLogPage() {
         <CardContent className="space-y-4">
           <div>
             <label className="text-sm font-medium mb-1 block">クライアント</label>
+            {clientsError ? (
+              <p className="text-sm text-destructive">クライアント一覧の取得に失敗しました</p>
+            ) : (
             <select value={selectedClient} onChange={(e) => setSelectedClient(e.target.value)}
               className="w-full border rounded px-3 py-2 text-sm">
               <option value="">選択してください</option>
               {clients?.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
             </select>
+            )}
           </div>
           <div>
             <label className="text-sm font-medium mb-1 block">状況（任意）</label>

@@ -18,10 +18,11 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { data: status } = useQuery({
+  const { data: status, isError } = useQuery({
     queryKey: ["system-status"],
     queryFn: api.system.status,
     refetchInterval: 10000,
+    retry: 1,
   });
 
   let currentSection = "";
@@ -57,8 +58,14 @@ export function Sidebar() {
         })}
       </nav>
       <div className="border-t p-3 text-xs text-muted-foreground space-y-1">
-        <div>Chat: {status?.chat_provider === "claude" ? "Claude" : "Gemini"} {(status?.chat_provider === "claude" ? status?.claude_available : status?.gemini_available) ? "●" : "○"}</div>
-        <div>Neo4j: {status?.neo4j_available ? "●" : "○"}</div>
+        {isError ? (
+          <div>API: 未接続 ○</div>
+        ) : (
+          <>
+            <div>Chat: {status?.chat_provider === "claude" ? "Claude" : "Gemini"} {(status?.chat_provider === "claude" ? status?.claude_available : status?.gemini_available) ? "●" : "○"}</div>
+            <div>Neo4j: {status?.neo4j_available ? "●" : "○"}</div>
+          </>
+        )}
       </div>
     </aside>
   );

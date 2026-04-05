@@ -21,9 +21,42 @@ _KANA_ROW_MAP = {
     "わ": "わをん",
 }
 
+# ---------------------------------------------------------------------------
+# アルファベット → 日本語読み（ひらがな）マッピング
+# 例: M → えむ（あ行）、K → けー（か行）
+# ---------------------------------------------------------------------------
+_ALPHA_TO_KANA: dict[str, str] = {
+    "A": "えー",    "B": "びー",    "C": "しー",    "D": "でぃー",
+    "E": "いー",    "F": "えふ",    "G": "じー",    "H": "えいち",
+    "I": "あい",    "J": "じぇー",  "K": "けー",    "L": "える",
+    "M": "えむ",    "N": "えぬ",    "O": "おー",    "P": "ぴー",
+    "Q": "きゅー",  "R": "あーる",  "S": "えす",    "T": "てぃー",
+    "U": "ゆー",    "V": "ぶい",    "W": "だぶりゅー",
+    "X": "えっくす", "Y": "わい",   "Z": "ぜっと",
+}
+
 
 def _name_to_kana(name: str) -> str:
-    """漢字名をひらがなに変換（pykakasi使用）"""
+    """漢字名・アルファベット名をひらがなに変換。
+
+    - イニシャル表記（例: "M・K"）→ 各文字の日本語読みに変換（"えむ・けー"）
+    - 漢字名 → pykakasi で変換
+    """
+    import re
+
+    # 名前の先頭文字がアルファベットならイニシャル表記として処理
+    if name and name[0].isascii() and name[0].isalpha():
+        parts: list[str] = []
+        for ch in name:
+            upper = ch.upper()
+            if upper in _ALPHA_TO_KANA:
+                parts.append(_ALPHA_TO_KANA[upper])
+            else:
+                # 区切り文字（・、-、スペース等）はそのまま
+                parts.append(ch)
+        return "".join(parts)
+
+    # 漢字名は pykakasi で変換
     from pykakasi import kakasi as Kakasi
 
     kks = Kakasi()
@@ -31,8 +64,17 @@ def _name_to_kana(name: str) -> str:
     return "".join(item["hira"] for item in result)
 
 
+def _is_alpha_name(name: str) -> bool:
+    """名前がアルファベット（イニシャル等）で始まるかを判定。"""
+    return bool(name) and name[0].isascii() and name[0].isalpha()
+
+
 def _matches_kana_row(kana: str, row_prefix: str) -> bool:
-    """かな行の先頭文字でフィルタ（あ行→あいうえお のいずれかで始まるか）"""
+    """かな行の先頭文字でフィルタ（あ行→あいうえお のいずれかで始まるか）。
+
+    row_prefix が "ABC" の場合は、元の名前がアルファベット始まりかで判定する
+    （呼び出し元で別途処理）。
+    """
     chars = _KANA_ROW_MAP.get(row_prefix, row_prefix)
     return any(kana.startswith(c) for c in chars)
 from app.schemas.client import (
@@ -76,10 +118,20 @@ def list_clients(
 
         summaries: list[ClientSummary] = []
         for row in rows:
-            # kana プロパティがなければ pykakasi で名前から自動変換
-            kana: str | None = row.get("kana") or _name_to_kana(row["name"])
-            if kana_prefix and not _matches_kana_row(kana, kana_prefix):
-                continue
+            name = row["name"]
+            # kana プロパティがなければ自動変換（アルファベット対応含む）
+            kana: str | None = row.get("kana") or _name_to_kana(name)
+
+            # フィルタ処理
+            if kana_prefix:
+                if kana_prefix == "ABC":
+                    # 英字フィルタ: アルファベットで始まる名前のみ表示
+                    if not _is_alpha_name(name):
+                        continue
+                else:
+                    # かな行フィルタ: かな読みの先頭文字で判定
+                    if not _matches_kana_row(kana, kana_prefix):
+                        continue
 
             dob = row.get("dob")
             age = calculate_age(dob) if dob else None
@@ -107,118 +159,79 @@ def list_clients(
 
 @router.get("/{name}", response_model=ClientDetail)
 def get_client(name: str) -> ClientDetail:
-    """クライアントの詳細プロフィールを返す（関連ノードすべて含む）。"""
+    """クライアントの詳細プロフィールを返す（1回の Cypher で全関連ノードを取得）。"""
     try:
-        # Basic info + conditions
-        base_rows = run_query(
+        rows = run_query(
             """
             MATCH (c:Client {name: $name})
             OPTIONAL MATCH (c)-[:HAS_CONDITION]->(cond:Condition)
-            RETURN c.name AS name, c.dob AS dob, c.bloodType AS blood_type,
-                   collect(DISTINCT {name: cond.name, diagnosedDate: cond.diagnosedDate}) AS conditions
+            OPTIONAL MATCH (c)-[:MUST_AVOID]->(ng:NgAction)
+            OPTIONAL MATCH (c)-[:REQUIRES]->(cp:CarePreference)
+            OPTIONAL MATCH (c)-[kpRel:HAS_KEY_PERSON]->(kp:KeyPerson)
+            OPTIONAL MATCH (c)-[:HAS_CERTIFICATE]->(cert:Certificate)
+            OPTIONAL MATCH (c)-[:TREATED_AT]->(h:Hospital)
+            OPTIONAL MATCH (c)-[:HAS_LEGAL_REP]->(g:Guardian)
+            RETURN c.name AS name,
+                   c.dob AS dob,
+                   c.bloodType AS blood_type,
+                   collect(DISTINCT {name: cond.name, diagnosedDate: cond.diagnosedDate}) AS conditions,
+                   collect(DISTINCT {action: ng.action, reason: ng.reason, riskLevel: ng.riskLevel}) AS ng_actions,
+                   collect(DISTINCT {category: cp.category, instruction: cp.instruction, priority: cp.priority}) AS care_preferences,
+                   collect(DISTINCT {name: kp.name, relationship: kp.relationship, phone: kp.phone, rank: kpRel.rank}) AS key_persons,
+                   collect(DISTINCT cert {.*}) AS certificates,
+                   head(collect(DISTINCT h {.*})) AS hospital,
+                   head(collect(DISTINCT g {.*})) AS guardian
             """,
             {"name": name},
         )
-        if not base_rows:
+        if not rows:
             raise HTTPException(status_code=404, detail=f"Client '{name}' not found")
 
-        row = base_rows[0]
+        row = rows[0]
         dob = row.get("dob")
         age = calculate_age(dob) if dob else None
 
-        # NgActions
-        ng_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:MUST_AVOID]->(ng:NgAction)
-            RETURN ng.action AS action, ng.reason AS reason, ng.riskLevel AS risk_level
-            ORDER BY
-              CASE ng.riskLevel
-                WHEN 'LifeThreatening' THEN 1
-                WHEN 'Panic' THEN 2
-                ELSE 3
-              END
-            """,
-            {"name": name},
-        )
+        # null エントリを除去（OPTIONAL MATCH で null プロパティが collect される）
+        conditions = [c for c in (row.get("conditions") or []) if c.get("name")]
+
+        ng_actions_raw = [n for n in (row.get("ng_actions") or []) if n.get("action")]
+        # riskLevel でソート（LifeThreatening → Panic → その他）
+        risk_order = {"LifeThreatening": 1, "Panic": 2}
+        ng_actions_raw.sort(key=lambda n: risk_order.get(n.get("riskLevel", ""), 3))
         ng_actions = [
             NgAction(
-                action=r["action"],
-                reason=r.get("reason"),
-                risk_level=r.get("risk_level") or "Discomfort",
+                action=n["action"],
+                reason=n.get("reason"),
+                risk_level=n.get("riskLevel") or "Discomfort",
             )
-            for r in ng_rows
+            for n in ng_actions_raw
         ]
 
-        # CarePreferences
-        care_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:REQUIRES]->(cp:CarePreference)
-            RETURN cp.category AS category, cp.instruction AS instruction, cp.priority AS priority
-            """,
-            {"name": name},
-        )
         care_preferences = [
             CarePreference(
-                category=r["category"],
-                instruction=r["instruction"],
-                priority=r.get("priority"),
+                category=cp["category"],
+                instruction=cp["instruction"],
+                priority=cp.get("priority"),
             )
-            for r in care_rows
+            for cp in (row.get("care_preferences") or [])
+            if cp.get("category")
         ]
 
-        # KeyPersons
-        kp_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[rel:HAS_KEY_PERSON]->(kp:KeyPerson)
-            RETURN kp.name AS kp_name, kp.relationship AS relationship,
-                   kp.phone AS phone, rel.rank AS rank
-            ORDER BY rel.rank ASC
-            """,
-            {"name": name},
-        )
+        kp_raw = [kp for kp in (row.get("key_persons") or []) if kp.get("name")]
+        kp_raw.sort(key=lambda kp: kp.get("rank") or 999)
         key_persons = [
             KeyPerson(
-                name=r["kp_name"],
-                relationship=r.get("relationship"),
-                phone=r.get("phone"),
-                rank=r.get("rank"),
+                name=kp["name"],
+                relationship=kp.get("relationship"),
+                phone=kp.get("phone"),
+                rank=kp.get("rank"),
             )
-            for r in kp_rows
+            for kp in kp_raw
         ]
 
-        # Certificates
-        cert_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:HAS_CERTIFICATE]->(cert:Certificate)
-            RETURN cert {.*} AS cert
-            """,
-            {"name": name},
-        )
-        certificates = [r["cert"] for r in cert_rows]
-
-        # Hospital
-        hosp_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:TREATED_AT]->(h:Hospital)
-            RETURN h {.*} AS hospital
-            LIMIT 1
-            """,
-            {"name": name},
-        )
-        hospital = hosp_rows[0]["hospital"] if hosp_rows else None
-
-        # Guardian
-        guardian_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:HAS_LEGAL_REP]->(g:Guardian)
-            RETURN g {.*} AS guardian
-            LIMIT 1
-            """,
-            {"name": name},
-        )
-        guardian = guardian_rows[0]["guardian"] if guardian_rows else None
-
-        conditions = [c for c in (row.get("conditions") or []) if c.get("name")]
+        certificates = [c for c in (row.get("certificates") or []) if c]
+        hospital = row.get("hospital")
+        guardian = row.get("guardian")
 
         return ClientDetail(
             name=row["name"],
@@ -248,102 +261,72 @@ def get_client(name: str) -> ClientDetail:
 
 @router.get("/{name}/emergency", response_model=EmergencyInfo)
 def get_emergency(name: str) -> EmergencyInfo:
-    """緊急時情報を返す（NgAction 優先度順、Safety First）。"""
+    """緊急時情報を返す（1回の Cypher で取得、NgAction 優先度順、Safety First）。"""
     try:
-        # Verify client exists
-        exists = run_query("MATCH (c:Client {name: $name}) RETURN c.name AS n LIMIT 1", {"name": name})
-        if not exists:
+        rows = run_query(
+            """
+            MATCH (c:Client {name: $name})
+            OPTIONAL MATCH (c)-[:MUST_AVOID]->(ng:NgAction)
+            OPTIONAL MATCH (c)-[:REQUIRES]->(cp:CarePreference)
+            OPTIONAL MATCH (c)-[kpRel:HAS_KEY_PERSON]->(kp:KeyPerson)
+            OPTIONAL MATCH (c)-[:TREATED_AT]->(h:Hospital)
+            OPTIONAL MATCH (c)-[:HAS_LEGAL_REP]->(g:Guardian)
+            RETURN c.name AS name,
+                   collect(DISTINCT {action: ng.action, reason: ng.reason, riskLevel: ng.riskLevel}) AS ng_actions,
+                   collect(DISTINCT {category: cp.category, instruction: cp.instruction, priority: cp.priority}) AS care_preferences,
+                   collect(DISTINCT {name: kp.name, relationship: kp.relationship, phone: kp.phone, rank: kpRel.rank}) AS key_persons,
+                   head(collect(DISTINCT h {.*})) AS hospital,
+                   head(collect(DISTINCT g {.*})) AS guardian
+            """,
+            {"name": name},
+        )
+        if not rows:
             raise HTTPException(status_code=404, detail=f"Client '{name}' not found")
 
-        # NgActions (life-threatening first)
-        ng_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:MUST_AVOID]->(ng:NgAction)
-            RETURN ng.action AS action, ng.reason AS reason, ng.riskLevel AS risk_level
-            ORDER BY
-              CASE ng.riskLevel
-                WHEN 'LifeThreatening' THEN 1
-                WHEN 'Panic' THEN 2
-                ELSE 3
-              END
-            """,
-            {"name": name},
-        )
+        row = rows[0]
+
+        # NgActions — riskLevel でソート（LifeThreatening → Panic → その他）
+        ng_raw = [n for n in (row.get("ng_actions") or []) if n.get("action")]
+        risk_order = {"LifeThreatening": 1, "Panic": 2}
+        ng_raw.sort(key=lambda n: risk_order.get(n.get("riskLevel", ""), 3))
         ng_actions = [
             NgAction(
-                action=r["action"],
-                reason=r.get("reason"),
-                risk_level=r.get("risk_level") or "Discomfort",
+                action=n["action"],
+                reason=n.get("reason"),
+                risk_level=n.get("riskLevel") or "Discomfort",
             )
-            for r in ng_rows
+            for n in ng_raw
         ]
 
-        # CarePreferences
-        care_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:REQUIRES]->(cp:CarePreference)
-            RETURN cp.category AS category, cp.instruction AS instruction, cp.priority AS priority
-            """,
-            {"name": name},
-        )
         care_preferences = [
             CarePreference(
-                category=r["category"],
-                instruction=r["instruction"],
-                priority=r.get("priority"),
+                category=cp["category"],
+                instruction=cp["instruction"],
+                priority=cp.get("priority"),
             )
-            for r in care_rows
+            for cp in (row.get("care_preferences") or [])
+            if cp.get("category")
         ]
 
-        # KeyPersons
-        kp_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[rel:HAS_KEY_PERSON]->(kp:KeyPerson)
-            RETURN kp.name AS kp_name, kp.relationship AS relationship,
-                   kp.phone AS phone, rel.rank AS rank
-            ORDER BY rel.rank ASC
-            """,
-            {"name": name},
-        )
+        kp_raw = [kp for kp in (row.get("key_persons") or []) if kp.get("name")]
+        kp_raw.sort(key=lambda kp: kp.get("rank") or 999)
         key_persons = [
             KeyPerson(
-                name=r["kp_name"],
-                relationship=r.get("relationship"),
-                phone=r.get("phone"),
-                rank=r.get("rank"),
+                name=kp["name"],
+                relationship=kp.get("relationship"),
+                phone=kp.get("phone"),
+                rank=kp.get("rank"),
             )
-            for r in kp_rows
+            for kp in kp_raw
         ]
-
-        # Hospital
-        hosp_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:TREATED_AT]->(h:Hospital)
-            RETURN h {.*} AS hospital
-            LIMIT 1
-            """,
-            {"name": name},
-        )
-        hospital = hosp_rows[0]["hospital"] if hosp_rows else None
-
-        # Guardian
-        guardian_rows = run_query(
-            """
-            MATCH (c:Client {name: $name})-[:HAS_LEGAL_REP]->(g:Guardian)
-            RETURN g {.*} AS guardian
-            LIMIT 1
-            """,
-            {"name": name},
-        )
-        guardian = guardian_rows[0]["guardian"] if guardian_rows else None
 
         return EmergencyInfo(
             client_name=name,
             ng_actions=ng_actions,
             care_preferences=care_preferences,
             key_persons=key_persons,
-            hospital=hospital,
-            guardian=guardian,
+            hospital=row.get("hospital"),
+            guardian=row.get("guardian"),
         )
 
     except HTTPException:

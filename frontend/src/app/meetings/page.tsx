@@ -7,14 +7,16 @@ import { api } from "@/lib/api";
 
 export default function MeetingsPage() {
   const [selectedClient, setSelectedClient] = useState("");
-  const { data: clients } = useQuery({
+  const { data: clients, isError: clientsError } = useQuery({
     queryKey: ["clients"],
     queryFn: () => api.clients.list(),
+    retry: 1,
   });
-  const { data: meetings, refetch } = useQuery({
+  const { data: meetings, isError: meetingsError, refetch } = useQuery({
     queryKey: ["meetings", selectedClient],
     queryFn: () => api.meetings.list(selectedClient),
     enabled: !!selectedClient,
+    retry: 1,
   });
 
   return (
@@ -39,7 +41,11 @@ export default function MeetingsPage() {
               </option>
             ))}
           </select>
-          {!meetings?.length ? (
+          {clientsError ? (
+            <p className="text-sm text-destructive">クライアント一覧の取得に失敗しました</p>
+          ) : meetingsError ? (
+            <p className="text-sm text-destructive">面談記録の取得に失敗しました</p>
+          ) : !meetings?.length ? (
             <p className="text-sm text-muted-foreground">
               {selectedClient ? "記録なし" : "クライアントを選択してください"}
             </p>

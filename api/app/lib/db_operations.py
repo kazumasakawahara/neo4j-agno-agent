@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from neo4j import GraphDatabase, Driver
+from neo4j.time import Date as Neo4jDate, DateTime as Neo4jDateTime, Time as Neo4jTime, Duration as Neo4jDuration
 
 from app.config import settings
 
@@ -112,12 +113,39 @@ def is_db_available() -> bool:
 # Query execution
 # ---------------------------------------------------------------------------
 
+def _sanitize_value(value: Any) -> Any:
+    """Neo4j 固有型（Date, DateTime, Duration 等）を JSON 直列化可能な Python 型に変換する。"""
+    if isinstance(value, Neo4jDateTime):
+        # neo4j.time.DateTime → ISO 8601 文字列
+        return value.iso_format()
+    if isinstance(value, Neo4jDate):
+        # neo4j.time.Date → "YYYY-MM-DD"
+        return str(value)
+    if isinstance(value, Neo4jTime):
+        return value.iso_format()
+    if isinstance(value, Neo4jDuration):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _sanitize_value(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_value(item) for item in value]
+    return value
+
+
+def _sanitize_record(record_dict: dict) -> dict:
+    """レコード辞書内の全値を再帰的にサニタイズする。"""
+    return {k: _sanitize_value(v) for k, v in record_dict.items()}
+
+
 def run_query(query: str, params: dict | None = None) -> list[dict]:
-    """Execute a Cypher query and return all records as a list of dicts."""
+    """Execute a Cypher query and return all records as a list of dicts.
+
+    Neo4j 固有の日付・時刻型は自動的に文字列へ変換される。
+    """
     driver = get_driver()
     with driver.session() as session:
         result = session.run(query, params or {})
-        return [record.data() for record in result]
+        return [_sanitize_record(record.data()) for record in result]
 
 
 # ---------------------------------------------------------------------------

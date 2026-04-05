@@ -1,5 +1,5 @@
 "use client";
-const KANA_ROWS = ["あ","か","さ","た","な","は","ま","や","ら","わ"];
+const KANA_ROWS = ["あ","か","さ","た","な","は","ま","や","ら","わ","ABC"];
 
 interface Props { selected: string | null; onSelect: (k: string | null) => void; }
 

@@ -9,9 +9,20 @@ import { api } from "@/lib/api";
 export default function ClientDetailPage() {
   const params = useParams();
   const name = decodeURIComponent(params.name as string);
-  const { data: client } = useQuery({ queryKey: ["client", name], queryFn: () => api.clients.get(name) });
+  const { data: client, isLoading, isError, error } = useQuery({
+    queryKey: ["client", name],
+    queryFn: () => api.clients.get(name),
+    retry: 1,
+  });
 
-  if (!client) return <p>読み込み中...</p>;
+  if (isLoading) return <p className="text-muted-foreground">読み込み中...</p>;
+  if (isError) return (
+    <div className="space-y-2">
+      <p className="text-destructive font-medium">クライアント情報の取得に失敗しました</p>
+      <p className="text-sm text-muted-foreground">{error?.message ?? "不明なエラー"}</p>
+    </div>
+  );
+  if (!client) return <p className="text-muted-foreground">データが見つかりません</p>;
 
   const riskColor = (level: string) => {
     if (level === "LifeThreatening") return "destructive";

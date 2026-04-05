@@ -23,28 +23,33 @@ export default function EcomapPage() {
   const [selectedClient, setSelectedClient] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("full_view");
 
-  const { data: clients } = useQuery({
+  const { data: clients, isError: clientsError } = useQuery({
     queryKey: ["clients"],
     queryFn: () => api.clients.list(),
+    retry: 1,
   });
 
   const { data: templates } = useQuery({
     queryKey: ["ecomap-templates"],
     queryFn: () => api.ecomap.templates(),
+    retry: 1,
   });
 
   const { data: colors } = useQuery({
     queryKey: ["ecomap-colors"],
     queryFn: () => api.ecomap.colors(),
+    retry: 1,
   });
 
   const {
     data: ecomapData,
     isLoading,
+    isError: ecomapError,
   } = useQuery({
     queryKey: ["ecomap", selectedClient, selectedTemplate],
     queryFn: () => api.ecomap.get(selectedClient, selectedTemplate),
     enabled: !!selectedClient,
+    retry: 1,
   });
 
   return (
@@ -89,7 +94,13 @@ export default function EcomapPage() {
       </div>
 
       {/* Graph */}
-      {!selectedClient ? (
+      {clientsError ? (
+        <Card>
+          <CardContent className="pt-6 text-center text-destructive">
+            クライアント一覧の取得に失敗しました
+          </CardContent>
+        </Card>
+      ) : !selectedClient ? (
         <Card>
           <CardContent className="pt-6 text-center text-muted-foreground">
             クライアントを選択するとエコマップが表示されます
@@ -99,6 +110,12 @@ export default function EcomapPage() {
         <Card>
           <CardContent className="pt-6 text-center text-muted-foreground">
             読み込み中...
+          </CardContent>
+        </Card>
+      ) : ecomapError ? (
+        <Card>
+          <CardContent className="pt-6 text-center text-destructive">
+            エコマップの取得に失敗しました
           </CardContent>
         </Card>
       ) : ecomapData ? (

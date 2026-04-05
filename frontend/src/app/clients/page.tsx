@@ -10,9 +10,10 @@ import { api } from "@/lib/api";
 
 export default function ClientsPage() {
   const [kana, setKana] = useState<string | null>(null);
-  const { data: clients } = useQuery({
+  const { data: clients, isLoading, isError } = useQuery({
     queryKey: ["clients", kana],
     queryFn: () => api.clients.list(kana ?? undefined),
+    retry: 1,
   });
 
   return (
@@ -21,6 +22,9 @@ export default function ClientsPage() {
       <KanaFilter selected={kana} onSelect={setKana} />
       <Card>
         <CardContent className="p-0">
+          {isError ? (
+            <p className="p-6 text-center text-destructive">クライアント一覧の取得に失敗しました</p>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
@@ -30,7 +34,10 @@ export default function ClientsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {clients?.map((c) => (
+              {isLoading ? (
+                <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">読み込み中...</TableCell></TableRow>
+              ) : clients?.length ? (
+                clients.map((c) => (
                 <TableRow key={c.name}>
                   <TableCell>
                     <Link href={`/clients/${encodeURIComponent(c.name)}`} className="text-primary hover:underline font-medium">
@@ -44,12 +51,13 @@ export default function ClientsPage() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
-              {!clients?.length && (
+                ))
+              ) : (
                 <TableRow><TableCell colSpan={3} className="text-center text-muted-foreground">データなし</TableCell></TableRow>
               )}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -5,12 +5,13 @@ import { Badge } from "@/components/ui/badge";
 import { api } from "@/lib/api";
 
 export function RenewalAlerts() {
-  const { data } = useQuery({ queryKey: ["dashboard-alerts"], queryFn: api.dashboard.alerts });
+  const { data, isError } = useQuery({ queryKey: ["dashboard-alerts"], queryFn: api.dashboard.alerts, retry: 1 });
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">更新期限アラート</CardTitle></CardHeader>
       <CardContent>
-        {!data?.length ? <p className="text-sm text-muted-foreground">アラートなし</p> : (
+        {isError ? <p className="text-sm text-destructive">アラートの取得に失敗しました</p> :
+        !data?.length ? <p className="text-sm text-muted-foreground">アラートなし</p> : (
           <ul className="space-y-2">
             {data.map((a, i) => (
               <li key={i} className="flex items-center justify-between text-sm">
