@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 
 const NAV_ITEMS = [
   { href: "/", label: "ホーム", section: "ホーム" },
+  { href: "/intake", label: "インテーク", section: "記録" },
   { href: "/narrative", label: "ナラティブ入力", section: "記録" },
   { href: "/quicklog", label: "クイックログ", section: "記録" },
   { href: "/meetings", label: "面談記録", section: "記録" },

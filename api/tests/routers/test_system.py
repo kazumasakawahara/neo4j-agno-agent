@@ -46,6 +46,22 @@ class TestSystemStatus:
         data = resp.json()
         assert isinstance(data["embedding_model"], str)
 
+    def test_system_status_has_ollama_field(self, client):
+        """ollama_available field is present in system status response."""
+        with patch("app.routers.system.is_db_available", return_value=False):
+            resp = client.get("/api/system/status")
+
+        data = resp.json()
+        assert "ollama_available" in data
+
+    def test_system_status_ollama_available_is_bool(self, client):
+        """ollama_available field is a boolean value."""
+        with patch("app.routers.system.is_db_available", return_value=False):
+            resp = client.get("/api/system/status")
+
+        data = resp.json()
+        assert isinstance(data["ollama_available"], bool)
+
 
 class TestHealth:
     """GET /api/health"""

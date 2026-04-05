@@ -1,43 +1,47 @@
-"""Chat router — WebSocket chat with emergency routing.
+"""Chat router -- WebSocket chat with intake mode, emergency routing, and dynamic LLM switching.
 
-プロバイダー非依存: Gemini / Claude / OpenAI を設定で切り替え可能。
-セッション対応: Agno の InMemoryDb で会話履歴を自動管理し、
-2ターン目以降も「山田健太さん」などのクライアント名を保持する。
+Provider-agnostic: Gemini / Claude / OpenAI / Ollama switchable at runtime.
+Session-aware: Agno InMemoryDb keeps conversation history across turns.
+Intake mode: 7-pillar guided intake via ``mode: "intake"`` in message payload.
 """
+
 import json
 import logging
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.agents.gemini_agent import chat, create_session_agent
-from app.agents.safety_first import extract_client_name, handle_emergency, is_emergency
+from app.agents.gemini_agent import (
+    CHAT_SYSTEM_PROMPT,
+    TOOLS,
+    _create_model,
+    chat,
+    create_session_agent,
+)
+from app.agents.intake_agent import cleanup_session, handle_intake_message
+from app.agents.model_switch import detect_model_switch
+from app.agents.safety_first import handle_emergency, is_emergency
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
-
-def _provider_label() -> str:
-    """現在のチャットプロバイダー名を返す（ルーティング表示用）。"""
-    labels = {
-        "gemini": "Gemini",
-        "claude": "Claude",
-        "openai": "OpenAI",
-        "ollama": "Ollama (ローカル)",
-    }
-    return labels.get(settings.chat_provider, settings.chat_provider)
+_PROVIDER_LABELS = {
+    "gemini": "Gemini",
+    "claude": "Claude",
+    "openai": "OpenAI",
+    "ollama": "Ollama (ローカル)",
+}
 
 
 @router.websocket("/ws")
 async def chat_websocket(websocket: WebSocket):
     await websocket.accept()
     session_id = str(uuid.uuid4())
+    current_provider: str = settings.chat_provider
+    agent = None  # Lazily initialised; recreated on provider switch
 
-    # セッション対応エージェントを作成（WebSocket接続中は同一インスタンスを再利用）
-    agent = create_session_agent(session_id)
-
-    # 会話履歴テキスト（Safety First でクライアント名を抽出するために保持）
+    # Conversation history for Safety First client-name extraction
     message_history: list[str] = []
 
     try:
@@ -45,14 +49,82 @@ async def chat_websocket(websocket: WebSocket):
             data = await websocket.receive_text()
             try:
                 msg = json.loads(data)
-                user_text = msg.get("content", "")
-                session_id = msg.get("session_id", session_id)
+                user_text: str = msg.get("content", "")
+                mode: str = msg.get("mode", "chat")
+                # session_id はサーバー生成のみ使用（クライアント指定は無視）
+
+                # 入力長制限（10,000文字）
+                if len(user_text) > 10000:
+                    user_text = user_text[:10000]
 
                 if not user_text:
                     await websocket.send_json({"type": "done", "session_id": session_id})
                     continue
 
-                # Safety First: 一刻を争う危機のみ（それ以外はエージェントが判断）
+                # -----------------------------------------------------------
+                # 1. Model switch detection (checked on every message)
+                # -----------------------------------------------------------
+                switch = detect_model_switch(user_text)
+                if switch:
+                    provider, display_name = switch
+                    current_provider = provider
+                    agent = None  # Force recreation with new provider
+                    await websocket.send_json({
+                        "type": "model_switched",
+                        "provider": provider,
+                        "model": display_name,
+                    })
+                    await websocket.send_json({
+                        "type": "stream",
+                        "content": f"{display_name} に切り替えました。",
+                        "agent": provider,
+                    })
+                    await websocket.send_json({"type": "done", "session_id": session_id})
+                    continue
+
+                # -----------------------------------------------------------
+                # 2. Intake mode
+                # -----------------------------------------------------------
+                if mode == "intake":
+                    result = await handle_intake_message(session_id, user_text)
+
+                    # Progress update
+                    if result.get("progress"):
+                        await websocket.send_json({
+                            "type": "intake_progress",
+                            **result["progress"],
+                        })
+
+                    # Stream response text in chunks
+                    response_text = result.get("response", "")
+                    for i in range(0, len(response_text), 30):
+                        await websocket.send_json({
+                            "type": "stream",
+                            "content": response_text[i : i + 30],
+                            "agent": "intake",
+                        })
+
+                    # Graph preview (after safety-critical phases or final)
+                    if result.get("preview"):
+                        await websocket.send_json({
+                            "type": "intake_preview",
+                            "nodes": result["preview"].get("nodes", []),
+                            "relationships": result["preview"].get("relationships", []),
+                        })
+
+                    # Registration complete
+                    if result.get("complete"):
+                        await websocket.send_json({
+                            "type": "intake_complete",
+                            "registered_count": result.get("registered_count", 0),
+                        })
+
+                    await websocket.send_json({"type": "done", "session_id": session_id})
+                    continue
+
+                # -----------------------------------------------------------
+                # 3. Emergency routing (Safety First -- bypasses LLM)
+                # -----------------------------------------------------------
                 if is_emergency(user_text):
                     await websocket.send_json({
                         "type": "routing",
@@ -60,37 +132,80 @@ async def chat_websocket(websocket: WebSocket):
                         "decision": "emergency_search",
                         "reason": "現在進行中の危機を検知",
                     })
-                    # 現在のメッセージにクライアント名がなければ履歴から探す
                     response = handle_emergency(user_text, message_history)
                 else:
+                    # -------------------------------------------------------
+                    # 4. Normal chat (with session-aware agent)
+                    # -------------------------------------------------------
+                    label = _PROVIDER_LABELS.get(current_provider, current_provider)
                     await websocket.send_json({
                         "type": "routing",
-                        "agent": settings.chat_provider,
+                        "agent": current_provider,
                         "decision": "chat",
-                        "reason": f"{_provider_label()}（DB検索ツール付き）",
+                        "reason": f"{label}（DB検索ツール付き）",
                     })
-                    # セッション対応エージェントを使用（履歴は Agno が自動管理）
+
+                    # Create or reuse session agent
+                    if agent is None:
+                        agent = _create_session_agent_for_provider(
+                            session_id, current_provider
+                        )
+
                     response = await chat(user_text, agent=agent)
 
-                # 履歴にユーザーメッセージを保存（Safety First 用）
+                # Record message for Safety First history
                 message_history.append(user_text)
 
-                # ストリーミング送信
+                # Stream response text in chunks
                 for i in range(0, len(response), 30):
                     await websocket.send_json({
                         "type": "stream",
-                        "content": response[i:i + 30],
-                        "agent": settings.chat_provider,
+                        "content": response[i : i + 30],
+                        "agent": current_provider,
                     })
 
                 await websocket.send_json({"type": "done", "session_id": session_id})
+
             except json.JSONDecodeError:
-                await websocket.send_json({"type": "stream", "content": "無効なメッセージ形式です。", "agent": "system"})
+                await websocket.send_json({
+                    "type": "stream",
+                    "content": "無効なメッセージ形式です。",
+                    "agent": "system",
+                })
                 await websocket.send_json({"type": "done", "session_id": session_id})
             except Exception as e:
-                logger.error(f"Chat processing error: {e}", exc_info=True)
-                await websocket.send_json({"type": "stream", "content": "エラーが発生しました。もう一度お試しください。", "agent": "system"})
+                logger.error("Chat processing error: %s", e, exc_info=True)
+                await websocket.send_json({
+                    "type": "stream",
+                    "content": "エラーが発生しました。もう一度お試しください。",
+                    "agent": "system",
+                })
                 await websocket.send_json({"type": "done", "session_id": session_id})
 
     except WebSocketDisconnect:
-        logger.info(f"Chat session {session_id} disconnected")
+        logger.info("Chat session %s disconnected", session_id)
+        cleanup_session(session_id)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _create_session_agent_for_provider(session_id: str, provider: str):
+    """Create a session-aware Agno Agent for the given provider."""
+    from agno.agent import Agent
+    from agno.db.in_memory import InMemoryDb
+
+    model = _create_model(provider)
+
+    return Agent(
+        model=model,
+        tools=TOOLS,
+        instructions=[CHAT_SYSTEM_PROMPT],
+        markdown=True,
+        db=InMemoryDb(),
+        session_id=session_id,
+        add_history_to_context=True,
+        num_history_runs=6,
+    )

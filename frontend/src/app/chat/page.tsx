@@ -5,13 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Mic, MicOff } from "lucide-react";
 import { useChat } from "@/hooks/useChat";
+import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 
 export default function ChatPage() {
   const { messages, isLoading, agentInfo, error, sendMessage, clearError } = useChat();
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const {
+    isSupported: micSupported,
+    isListening,
+    transcript,
+    interimTranscript,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechRecognition();
 
   // メッセージ追加時に自動スクロール
   useEffect(() => {
@@ -23,11 +34,27 @@ export default function ChatPage() {
     inputRef.current?.focus();
   }, []);
 
+  // 音声認識中はフックの値を表示、それ以外は手入力値を表示
+  const displayValue = isListening
+    ? transcript + interimTranscript
+    : transcript || input;
+
   const handleSend = () => {
-    if (!input.trim()) return;
-    sendMessage(input);
+    const text = displayValue.trim();
+    if (!text) return;
+    if (isListening) stopListening();
+    sendMessage(text);
     setInput("");
+    resetTranscript();
     inputRef.current?.focus();
+  };
+
+  const toggleMic = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
   };
 
   const isEmpty = messages.length === 0;
@@ -68,14 +95,25 @@ export default function ChatPage() {
               <div className="flex gap-2">
                 <Input
                   ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  value={displayValue}
+                  onChange={(e) => { resetTranscript(); setInput(e.target.value); }}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) handleSend(); }}
                   placeholder="例: 山田健太さんの緊急連絡先を教えてください"
                   disabled={isLoading}
                   className="h-12 text-base"
                 />
-                <Button onClick={handleSend} disabled={isLoading || !input.trim()} className="h-12 px-6">
+                {micSupported && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleMic}
+                    className={`h-12 w-12 shrink-0 ${isListening ? "animate-pulse text-red-500" : ""}`}
+                    aria-label={isListening ? "音声入力を停止" : "音声入力を開始"}
+                  >
+                    {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                  </Button>
+                )}
+                <Button onClick={handleSend} disabled={isLoading || !displayValue.trim()} className="h-12 px-6">
                   送信
                 </Button>
               </div>
@@ -138,14 +176,25 @@ export default function ChatPage() {
               <div className="flex gap-2">
                 <Input
                   ref={inputRef}
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  value={displayValue}
+                  onChange={(e) => { resetTranscript(); setInput(e.target.value); }}
                   onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) handleSend(); }}
                   placeholder="メッセージを入力..."
                   disabled={isLoading}
                   className="h-11 text-base"
                 />
-                <Button onClick={handleSend} disabled={isLoading || !input.trim()} className="h-11 px-6">
+                {micSupported && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={toggleMic}
+                    className={`h-11 w-11 shrink-0 ${isListening ? "animate-pulse text-red-500" : ""}`}
+                    aria-label={isListening ? "音声入力を停止" : "音声入力を開始"}
+                  >
+                    {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                  </Button>
+                )}
+                <Button onClick={handleSend} disabled={isLoading || !displayValue.trim()} className="h-11 px-6">
                   送信
                 </Button>
               </div>

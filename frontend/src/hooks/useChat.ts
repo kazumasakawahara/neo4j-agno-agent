@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { IntakeProgress, IntakePreview, ModelSwitchInfo } from "@/lib/types";
 
 interface Message {
   role: "user" | "assistant";
@@ -19,6 +20,9 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [intakeProgress, setIntakeProgress] = useState<IntakeProgress[]>([]);
+  const [intakePreview, setIntakePreview] = useState<IntakePreview | null>(null);
+  const [modelInfo, setModelInfo] = useState<ModelSwitchInfo | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const currentResponseRef = useRef("");
@@ -28,7 +32,21 @@ export function useChat() {
   // 共通: WebSocket メッセージ処理（JSON.parse を try/catch で保護）
   // ----------------------------------------------------------------
   const handleWsMessage = useCallback((event: MessageEvent) => {
-    let msg: { type?: string; content?: string; agent?: string; decision?: string };
+    let msg: {
+      type?: string;
+      content?: string;
+      agent?: string;
+      decision?: string;
+      phase?: number;
+      total?: number;
+      pillar?: string;
+      status?: "pending" | "active" | "complete";
+      nodes?: IntakePreview["nodes"];
+      relationships?: IntakePreview["relationships"];
+      registered_count?: number;
+      provider?: string;
+      model?: string;
+    };
     try {
       msg = JSON.parse(event.data);
     } catch {
@@ -56,6 +74,42 @@ export function useChat() {
       // サーバー側から返されるエラーメッセージ
       setError(msg.content || "サーバーエラーが発生しました");
       setIsLoading(false);
+    } else if (msg.type === "intake_progress") {
+      // インテーク進捗更新
+      const progress: IntakeProgress = {
+        phase: msg.phase ?? 0,
+        total: msg.total ?? 7,
+        pillar: msg.pillar ?? "",
+        status: msg.status ?? "pending",
+      };
+      setIntakeProgress((prev) => {
+        const idx = prev.findIndex((p) => p.pillar === progress.pillar);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = progress;
+          return updated;
+        }
+        return [...prev, progress];
+      });
+    } else if (msg.type === "intake_preview") {
+      // 抽出ノードのプレビュー
+      setIntakePreview({
+        nodes: msg.nodes ?? [],
+        relationships: msg.relationships ?? [],
+      });
+    } else if (msg.type === "intake_complete") {
+      // インテーク完了
+      const count = msg.registered_count ?? 0;
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `登録完了: ${count}件のノードを登録しました。` },
+      ]);
+      setIsLoading(false);
+    } else if (msg.type === "model_switched") {
+      setModelInfo({
+        provider: msg.provider ?? "",
+        model: msg.model ?? "",
+      });
     }
   }, []);
 
@@ -112,15 +166,17 @@ export function useChat() {
   // メッセージ送信（切断時は再接続を試みる）
   // ----------------------------------------------------------------
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, mode?: "chat" | "intake") => {
       setError(null);
       setMessages((prev) => [...prev, { role: "user", content }]);
       setIsLoading(true);
       currentResponseRef.current = "";
 
+      const payload = JSON.stringify({ type: "message", content, mode: mode ?? "chat" });
+
       const ws = wsRef.current;
       if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "message", content }));
+        ws.send(payload);
         return;
       }
 
@@ -142,7 +198,7 @@ export function useChat() {
         newWs.onopen = () => {
           reconnectCountRef.current = 0;
           setError(null);
-          newWs.send(JSON.stringify({ type: "message", content }));
+          newWs.send(payload);
         };
         newWs.onmessage = handleWsMessage;
         newWs.onclose = handleWsClose;
@@ -162,5 +218,15 @@ export function useChat() {
   /** エラー状態をクリアする */
   const clearError = useCallback(() => setError(null), []);
 
-  return { messages, isLoading, agentInfo, error, sendMessage, clearError };
+  return {
+    messages,
+    isLoading,
+    agentInfo,
+    error,
+    sendMessage,
+    clearError,
+    intakeProgress,
+    intakePreview,
+    modelInfo,
+  };
 }
