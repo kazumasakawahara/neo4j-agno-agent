@@ -74,25 +74,28 @@ cd frontend && pnpm dev --port 3001
    - `app_quick_log.py`: Mobile-friendly quick logging (exceptional events only)
    - `app_ui.py`: Agno/Gemini chat-based support
 
-3. **Backend Services**:
+3. **Voice Intake** (Next.js フロントエンド):
+   - `intake/page.tsx`: 音声対話型7本柱インテーク（Web Speech API + WebSocket）
+
+4. **Backend Services**:
    - `server.py`: MCP server for Claude Desktop integration (40+ tools)
    - `sos/api_server.py`: FastAPI for SOS emergency notifications with LINE integration
    - `mobile/api_server.py`: FastAPI for mobile narrative input (Gemini extraction + Neo4j)
 
-4. **Shared Libraries** (`lib/`):
+5. **Shared Libraries** (`lib/`):
    - `db_operations.py`: Neo4j connection, query execution, data registration, dashboard stats
    - `ai_extractor.py`: Gemini 2.0-based text-to-structured-data extraction
    - `file_readers.py`: Multi-format file parsing (docx, xlsx, pdf, txt)
    - `utils.py`: Date parsing, session state management
 
-5. **Agent Protocols** (`agents/`):
+6. **Agent Protocols** (`agents/`):
    - `MANIFESTO.md`: Unified manifesto v4.0 (5 values, 7 pillars, 4 AI rules)
    - `ROUTING.md`: Guide for choosing between skills and Neo4j MCP
    - `protocols/`: Emergency, Parent Down, Onboarding, Handover
    - `workflows/`: Visit Preparation, Resilience Report, Renewal Check
    - `base.py`, `unified_support_agent.py`: Agno/Gemini agent (used by app_ui.py)
 
-6. **Skills** (`claude-skills/` → `~/.claude/skills/` via symlink):
+7. **Skills** (`claude-skills/` → `~/.claude/skills/` via symlink):
    - `neo4j-support-db/`: 障害福祉DB用Cypherテンプレート（8種、port 7687）
    - `livelihood-support/`: 生活困窮者DB用Cypherテンプレート（12種、port 7688）
    - `provider-search/`: 事業所検索・口コミ用Cypherテンプレート（9種、port 7687）
@@ -100,7 +103,7 @@ cd frontend && pnpm dev --port 3001
    - `ecomap-generator/`: エコマップ生成（Mermaid/SVG）
    - Install: `./setup.sh --skills` creates symlinks from repo to `~/.claude/skills/`
 
-7. **Ecomap Generator** (`skills/ecomap_generator/`):
+8. **Ecomap Generator** (`skills/ecomap_generator/`):
    - `drawio_engine.py`: draw.io XML generation with radial layout algorithm
    - 4 templates: full_view, support_meeting, emergency, handover
    - 9 category styles with color-coded nodes
@@ -111,6 +114,7 @@ cd frontend && pnpm dev --port 3001
 - **Gemini 2.0 Flash**: Narrative text structuring (extraction) via `lib/ai_extractor.py`
 - **Gemini Embedding 2** (`gemini-embedding-2-preview`): Multimodal embedding generation via `lib/embedding.py`
 - **Claude Desktop**: Natural language database queries via Skills + Neo4j MCP (see `agents/ROUTING.md`)
+- **Ollama (gemma4:26b)**: ローカルLLMチャット（オフライン対応）via Agno framework
 
 ### Embedding & Semantic Search (`lib/embedding.py`)
 
@@ -168,18 +172,23 @@ EOF
 ### Running Applications
 
 ```bash
-# Dashboard (port 8501) - primary entry point
-uv run streamlit run app.py
+# API サーバー（port 8001）— プライマリバックエンド
+cd api && uv run uvicorn app.main:app --reload --port 8001
+
+# Next.js フロントエンド（port 3001）— プライマリUI
+cd frontend && pnpm dev --port 3001
 
 # MCP Server for Claude Desktop
 # Configure in claude_desktop_config.json (see docs/ADVANCED_USAGE.md)
 
-# SOS Emergency API Server (port 8000)
+# SOS Emergency API Server (port 8080)
 cd sos && uv run python api_server.py
 
 # Mobile Narrative API (port 8080)
 uv run python mobile/api_server.py
 ```
+
+> **Note**: 旧 Streamlit UI は `archive/` に退避済み。
 
 ### Database Operations
 
@@ -222,6 +231,13 @@ Five skills provide Cypher templates executed via the generic neo4j MCP:
 
 See `agents/ROUTING.md` for guidance on choosing between skills.
 See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for all LLMs/agents).
+
+### Dynamic LLM Switching
+
+- User says "gemma4を使って" → `model_switch.py` detects → agent recreated with Ollama
+- `_create_model(provider)` accepts explicit provider arg to avoid race conditions
+- Session history preserved across switches
+- `CHAT_PROVIDER` 環境変数で初期プロバイダー指定（`gemini` / `claude` / `ollama`）
 
 ## Database Schema Notes
 
@@ -276,7 +292,9 @@ See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for
 neo4j-agno-agent/
 ├── api/                    # NEW: FastAPI + Gemini バックエンド
 │   ├── app/
-│   │   ├── agents/         # Gemini Agent + Safety First
+│   │   ├── agents/         # Gemini Agent + Safety First + Intake + LLM切替
+│   │   │   ├── intake_agent.py    # 7本柱対話型インテーク
+│   │   │   └── model_switch.py    # 動的LLM切替
 │   │   ├── routers/        # 9 API ルーター
 │   │   ├── lib/            # 共有ライブラリ（lib/から移植）
 │   │   └── schemas/        # Pydantic スキーマ
@@ -370,7 +388,7 @@ neo4j-agno-agent/
 - **Database**: Neo4j 5.15+ (via Docker)
 - **Python**: 3.12+ (enforced by `.python-version`)
 - **Package Manager**: uv (required, not pip)
-- **AI Models**: Gemini 2.0 Flash (Google), Claude (Anthropic)
+- **AI Models**: Gemini 2.0 Flash (Google), Claude (Anthropic), Ollama (gemma4:26b, ローカル)
 
 ### Key Python Libraries
 
