@@ -6,13 +6,15 @@
 
 ## アーキテクチャ概要
 
-### 3層ワークフロー
+### ワークフロー
 
 | レイヤー | ツール | 役割 |
 |:--|:--|:--|
-| Layer 1（青） | Streamlit: 初期登録 | 生育歴・家族構成の一括入力 |
-| Layer 2（オレンジ） | Streamlit: クイック記録 | 日々の気づきを30秒で記録 |
+| **Next.js フロントエンド** | ブラウザUI（port 3001） | ダッシュボード・記録・検索・チャット・インテーク |
+| **FastAPI バックエンド** | API（port 8001） | REST + WebSocket + エージェント |
 | **Layer 3（紫）** | **Claude Desktop + Skills** | **分析・提案・複雑な操作** |
+
+> **Note**: 旧 Streamlit UI（Layer 1・2）は `archive/` に退避済みです。
 
 ### Skills + Neo4j MCP 方式（推奨）
 
@@ -176,7 +178,7 @@ Claude が SKILL.md に含まれるCypherテンプレートを参照し、汎用
 佐藤さんの緊急時体制のエコマップをMermaid形式で表示して
 ```
 
-> **ヒント**: Claude Desktop を使わなくても、ダッシュボードの「可視化」→「エコマップ」ページからGUIで draw.io 形式のエコマップを生成できます。
+> **ヒント**: Claude Desktop を使わなくても、Next.js フロントエンドの「可視化」→「エコマップ」ページからGUIで draw.io 形式のエコマップを生成できます。
 
 ---
 
@@ -191,11 +193,11 @@ Claude が SKILL.md に含まれるCypherテンプレートを参照し、汎用
 | 事業所の検索・比較 | `provider-search` |
 | 緊急時の即時対応 | `emergency-protocol` |
 | 支援関係の可視化（Mermaid/SVG） | `ecomap-generator` |
-| 支援関係の可視化（draw.io） | ダッシュボード「可視化」→「エコマップ」 |
+| 支援関係の可視化（draw.io） | Next.js「可視化」→「エコマップ」 |
 | 証明書の期限管理 | `neo4j-support-db` |
 | 口コミの参照・登録 | `provider-search` |
 | 類似ケースの検索 | `livelihood-support` |
-| 意味的なキーワード検索 | ダッシュボード「活用」→「セマンティック検索」 |
+| 意味的なキーワード検索 | Next.js「活用」→「セマンティック検索」 |
 
 ---
 
@@ -259,6 +261,30 @@ vim claude-skills/neo4j-support-db/SKILL.md
 2. `SKILL.md` を作成（既存のSkillを参考に）
 3. `setup.sh` の `SKILLS` 配列に追加
 4. `./setup.sh --skills` を再実行
+
+---
+
+## Ollama（ローカルLLM）サポート
+
+チャット機能で Gemini の代わりに Ollama を使用できます。オフライン環境や API キー不要の運用に適しています。
+
+```bash
+# 環境変数で初期プロバイダーを指定
+export CHAT_PROVIDER=ollama
+export OLLAMA_MODEL=gemma4:26b
+```
+
+チャット中に「gemma4を使って」「claudeに切り替えて」と入力すると、`model_switch.py` が動的にLLMを切り替えます。セッション履歴は切り替え後も保持されます。
+
+---
+
+## 音声対話型インテーク
+
+Next.js フロントエンドの `/intake` ページで、音声対話による7本柱インテークが可能です。
+
+- Web Speech API による音声認識
+- WebSocket によるリアルタイムストリーミング応答
+- `intake_agent.py` が7本柱に沿って対話的に情報を収集
 
 ---
 

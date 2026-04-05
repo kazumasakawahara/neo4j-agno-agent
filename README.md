@@ -1,156 +1,202 @@
-# Post-Parent Support System (親亡き後支援システム)
+# 親なき後支援データベース (Post-Parent Support DB)
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Status: Production](https://img.shields.io/badge/Status-Production-green)
 
+> 知的障害・精神障害のある方の支援情報をグラフデータベースで管理し、
+> 親亡き後の支援継続を守るシステム
+
 **「親がいなくなったら、誰がこの子のことを一番に考えてくれるの？」**
 
-このシステムは、そんな切実な問いに応えるために開発された、オープンソースの支援情報管理プラットフォームです。
-Neo4jグラフデータベースとAIを活用し、障害のある当事者のための「デジタル後見人」を構築・運用できるように設計されています。
+このシステムは、そんな切実な問いに応えるために開発されたオープンソースの支援情報管理プラットフォームです。
 
 ---
 
-## Next.js UI (v2.0)
+## 特徴
 
-Streamlit UI に代わる新しいモダン UI です。
-
-### 起動方法
-
-```bash
-# Neo4j
-docker-compose up -d
-
-# API サーバー (port 8001)
-cd api && uv run uvicorn app.main:app --reload --port 8001
-
-# フロントエンド (port 3001)
-cd frontend && pnpm dev --port 3001
-```
-
-### 画面一覧
-
-| 画面 | パス | 説明 |
-|------|------|------|
-| ダッシュボード | `/` | 統計・更新期限アラート・最近の活動 |
-| ナラティブ入力 | `/narrative` | テキスト/ファイル→AI抽出→確認→登録 |
-| クイックログ | `/quicklog` | 30秒で日常記録 |
-| クライアント一覧 | `/clients` | あかさたなフィルタ付き検索 |
-| AIチャット | `/chat` | Gemini + Safety First対話 |
-| セマンティック検索 | `/search` | ベクトル類似度検索 |
-| エコマップ | `/ecomap` | Neo4j Browser風ネットワーク可視化 |
-| 面談記録 | `/meetings` | 音声→Gemini文字起こし→登録 |
-| システム設定 | `/settings` | Gemini/Neo4j接続状態 |
-
----
-
-## 特徴：3層ワークフロー（レガシー参照）
+| 機能 | 説明 |
+|------|------|
+| 音声対話インテーク | 7本柱に基づく構造化聞き取り（マイク入力対応） |
+| マルチLLM対応 | Gemini / Claude / Ollama（gemma4）をチャット中に動的切替 |
+| セマンティック検索 | Gemini Embedding 2 + Neo4j ベクトルインデックスで意味検索 |
+| Safety First | 緊急時は禁忌事項・連絡先をLLM不要で即時表示 |
+| エコマップ | 支援ネットワークのインタラクティブ可視化 |
+| ナラティブ抽出 | 自然文・ファイルからグラフデータを自動構造化 |
+| 音声面談記録 | 録音ファイルから文字起こし・embedding・DB登録を一括処理 |
 
 > [!WARNING]
-> **免責事項**: 本システムは支援者の意思決定をサポートするためのものであり、**医療行為や診断を行うものではありません**。
-> 医学的な判断が必要な場合は、必ず有資格者（医師・看護師等）に相談してください。
-
-本システムは、用途に応じた3つのレイヤーで構成されています。
-
-### Layer 1: 初期登録（Streamlit UI）
-生育歴、家族構成、ケアの配慮事項、証明書情報などをまとめて入力します。
-ファイルアップロード（Word/Excel/PDF）にも対応し、AIが自動的にデータを構造化してNeo4jに保存します。
-
-### Layer 2: クイック記録（Streamlit UI）
-日々の支援で気になったことだけを30秒で記録します。
-「良い日」「気になること」だけの簡易記録で、現場の負担を最小限にします。
-
-### Layer 3: Claude Desktop + MCP（分析・提案）
-Claude Desktop Skills + Neo4j MCP を使って、自然言語でデータベースに問いかけます。
-パターン分析、訪問前ブリーフィング、引き継ぎサマリー、エコマップ生成、支援記録の全文検索など、
-高度な分析と提案をAIに任せることができます。
-
-### セマンティック検索（意味検索）
-Gemini Embedding 2 と Neo4j Vector Index により、**テキストの意味に基づいた検索**が可能です。
-「金銭管理に不安がある利用者」のような意味的なクエリで支援記録や禁忌事項を横断検索できます。
-スキャンPDFや手書きアセスメントシートの画像からもGemini OCRを通じてテキストを抽出し、検索対象に含められます。
-
-ダッシュボードの「活用」→「セマンティック検索」から利用できます。
-
-### 音声面談記録
-面談や支援会議の録音（MP3/WAV等、最大80秒）を**文字起こしなしで直接embedding**し、テキストクエリで検索できます。
-Gemini 2.0 Flash による自動文字起こしにも対応し、テキスト検索と音声ネイティブ検索の両方が可能です。
-
-ダッシュボードの「記録・登録」→「面談記録」からアップロード・登録できます。
-
-### クライアント類似度分析
-クライアントの支援概要（障害・禁忌・ケアの要点・支援記録）からembeddingを生成し、**支援特性が似ているクライアントを自動検出**します。
-新規利用者が来たときに過去の成功事例を参照したり、テキスト説明から類似ケースを探すことができます。
-
-ダッシュボードの「活用」→「セマンティック検索」→「類似クライアント」から利用できます。
-
-### エコマップ（支援ネットワーク図）
-ダッシュボードの「可視化」メニューから、クライアントの支援ネットワークを**draw.io形式**で生成・ダウンロードできます。
-4種類のテンプレート（全体像・支援会議用・緊急時・引き継ぎ用）に対応し、ダウンロード後は[draw.io](https://app.diagrams.net/)で自由に編集可能です。
+> **免責事項**: 本システムは支援者の意思決定をサポートするためのものであり、医療行為や診断を行うものではありません。医学的な判断が必要な場合は、必ず有資格者（医師・看護師等）に相談してください。
 
 ---
 
-## 5つの理念
+## アーキテクチャ
 
-1. **Dignity（尊厳）**: 管理対象ではなく、歴史と意思を持つ一人の人間として記録する
-2. **Safety（安全）**: 緊急時に「誰が」「何を」すべきか、迷わせない構造を作る
-3. **Continuity（継続性）**: 支援者が入れ替わっても、ケアの質と文脈を断絶させない
-4. **Resilience（強靭性）**: 親が倒れた際、その機能を即座に代替できるバックアップ体制を可視化する
-5. **Advocacy（権利擁護）**: 本人の声なき声を拾い上げ、法的な後ろ盾と紐づける
+| レイヤー | 技術 | ポート | 役割 |
+|----------|------|--------|------|
+| フロントエンド | Next.js 16 + shadcn/ui | 3001 | 全画面の業務UI |
+| APIサーバー | FastAPI + Agno | 8001 | REST + WebSocket |
+| データベース | Neo4j 5.x (Docker) | 7687 | グラフDB + ベクトルインデックス |
+| LLM | Gemini / Claude / Ollama | - | チャット・抽出・embedding |
+| MCP Server | server.py | - | Claude Desktop連携 |
 
-詳しくは [agents/MANIFESTO.md](./agents/MANIFESTO.md) をご覧ください。
+```
+┌─────────────┐    ┌──────────────┐    ┌─────────┐
+│  Next.js UI │───>│  FastAPI API  │───>│  Neo4j  │
+│  :3001      │<───│  :8001       │<───│  :7687  │
+└─────────────┘    └──────┬───────┘    └─────────┘
+                          │
+                   ┌──────┴───────┐
+                   │  LLM Layer   │
+                   │ Gemini/Claude│
+                   │ Ollama       │
+                   └──────────────┘
+```
 
 ---
 
-## 導入方法
+## クイックスタート
 
-### 必要環境
-- Docker Desktop（Neo4jデータベース用）
-- Python 3.12+、uv（パッケージマネージャー）
-- Google AI API キー（Gemini 2.0 Flash：データ構造化、Gemini Embedding 2：セマンティック検索）
-- Claude Desktop（Layer 3 の分析・提案用、任意）
+### 前提条件
 
-### 起動手順
+| ツール | バージョン | 用途 |
+|--------|-----------|------|
+| Docker Desktop | 最新 | Neo4j データベース |
+| Python | 3.12+ | APIサーバー |
+| uv | 最新 | Python パッケージ管理 |
+| Node.js | 22+ | フロントエンド |
+| pnpm | 最新 | Node.js パッケージ管理 |
+
+### セットアップ
 
 ```bash
-# 1. リポジトリをクローン
 git clone https://github.com/kazumasakawahara/neo4j-agno-agent.git
 cd neo4j-agno-agent
 
-# 2. 依存関係のインストール
-uv sync
+# 1. Neo4j 起動
+docker compose up -d
 
-# 3. .env ファイルを設定
-cp .env.example .env  # 編集して API キーなどを設定
+# 2. 環境変数を設定
+cp .env.example .env
+# .env を編集（GEMINI_API_KEY, ANTHROPIC_API_KEY 等を設定）
 
-# 4. Neo4j データベースを起動
-docker-compose up -d
+# 3. バックエンド起動（別ターミナル）
+cd api && uv sync && uv run uvicorn app.main:app --reload --port 8001
 
-# 5. ダッシュボードを起動
-uv run streamlit run app.py
+# 4. フロントエンド起動（別ターミナル）
+cd frontend && pnpm install && pnpm dev --port 3001
+
+# 5. ブラウザで開く
+open http://localhost:3001
 ```
 
-ブラウザで `http://localhost:8501` にアクセスすると、ダッシュボードが表示されます。
+### ワンクリック起動（Mac）
+
+デスクトップの **「親なき後支援DB.app」** をダブルクリックで Neo4j・API・フロントエンドを一括起動。
 
 ---
 
-## 使い方ガイド
+## 画面一覧
 
-- **はじめてのセットアップ**: [SETUP_GUIDE.md](./SETUP_GUIDE.md)
-- **Claude Desktop との連携**: [docs/ADVANCED_USAGE.md](./docs/ADVANCED_USAGE.md)
-- **開発者メモ**: [docs/DEV_NOTES.md](./docs/DEV_NOTES.md)
+| パス | 画面名 | 機能 |
+|------|--------|------|
+| `/` | ダッシュボード | 統計・更新アラート・最近の活動 |
+| `/clients` | クライアント一覧 | かな行フィルタ・詳細表示 |
+| `/narrative` | ナラティブ入力 | テキスト/ファイル → AI抽出 → DB登録 |
+| `/quicklog` | クイックログ | 30秒で支援記録 |
+| `/intake` | インテーク | マイク音声対話で7本柱情報収集 |
+| `/chat` | AIチャット | マイク音声入力対応、DB検索ツール付き |
+| `/search` | セマンティック検索 | ベクトル類似検索・クライアント類似度分析 |
+| `/ecomap` | エコマップ | 支援ネットワーク可視化 |
+| `/meetings` | 面談記録 | 音声アップロード・文字起こし・登録 |
+| `/settings` | LLM設定 | プロバイダー接続状態・切替 |
+
+---
+
+## LLM設定
+
+`.env` の `CHAT_PROVIDER` でデフォルトプロバイダーを設定。チャット中に「gemma4を使って」「claudeに切り替えて」で動的切替も可能。
+
+| プロバイダー | モデル | 用途 | 備考 |
+|-------------|--------|------|------|
+| `gemini` | Gemini 2.0 Flash | チャット・抽出・embedding | デフォルト、高速 |
+| `claude` | Claude Haiku 4.5 | チャット・インテーク | API key必要 |
+| `ollama` | gemma4:26b | チャット | ローカル実行、オフライン可 |
+
+> **Embedding**: セマンティック検索には `GEMINI_API_KEY` が必須です（Gemini Embedding 2 を使用）。
+
+---
+
+## 5つの理念と7本柱
+
+### 5つの理念
+
+1. **Dignity（尊厳）** -- 管理対象ではなく、歴史と意思を持つ一人の人間として記録する
+2. **Safety（安全）** -- 緊急時に「誰が」「何を」すべきか、迷わせない構造を作る
+3. **Continuity（継続性）** -- 支援者が入れ替わっても、ケアの質と文脈を断絶させない
+4. **Resilience（強靭性）** -- 親が倒れた際、その機能を即座に代替できるバックアップ体制を可視化する
+5. **Advocacy（権利擁護）** -- 本人の声なき声を拾い上げ、法的な後ろ盾と紐づける
+
+### 7本柱（データ構造の基盤）
+
+1. 本人性（Identity & Narrative）
+2. ケアの暗黙知（Care Instructions）
+3. 危機管理ネットワーク（Safety Net）
+4. 法的基盤（Legal Basis）
+5. 親の機能移行（Parental Transition）
+6. 金銭的安全（Financial Safety）
+7. 多機関連携（Multi-Agency Collaboration）
+
+詳細は [agents/MANIFESTO.md](./agents/MANIFESTO.md) を参照。
 
 ---
 
 ## プライバシーと安全性
 
-- **ローカル完結**: データはすべてあなたのPC内（Dockerコンテナ内）のNeo4jデータベースに保存されます
-- **匿名化機能**: AIが処理する前に、自動的に個人名や電話番号をマスキングする機能を備えています
+- **ローカル完結**: データはすべて自分のPC内（Docker コンテナ内の Neo4j）に保存
+- **匿名化機能**: AI処理前に個人名・電話番号を自動マスキング
+- **Ollama対応**: クラウドに一切データを送らないオフライン運用が可能
 
 ---
 
-## ライセンスと理念
+## 開発
 
-このソフトウェアは **MITライセンス** の下で無償公開されています。
+```bash
+# テスト実行（DB不要）
+cd api && uv run pytest tests/ -q
+
+# TypeScript 型チェック
+cd frontend && pnpm exec tsc --noEmit
+
+# デモデータ投入
+uv run python scripts/seed_demo_data.py
+
+# Embedding バックフィル
+uv run python scripts/backfill_embeddings.py --all
+```
 
 ---
+
+## ドキュメント
+
+| ドキュメント | 内容 |
+|-------------|------|
+| [SETUP_GUIDE.md](./SETUP_GUIDE.md) | はじめてのセットアップガイド（初心者向け） |
+| [docs/ADVANCED_USAGE.md](./docs/ADVANCED_USAGE.md) | Claude Desktop との連携 |
+| [docs/DEV_NOTES.md](./docs/DEV_NOTES.md) | 開発者メモ |
+| [docs/NEO4J_SCHEMA_CONVENTION.md](./docs/NEO4J_SCHEMA_CONVENTION.md) | Neo4j 命名規則 |
+| [agents/MANIFESTO.md](./agents/MANIFESTO.md) | 5理念・7本柱マニフェスト v4.0 |
+
+---
+
+## ライセンス
+
+このソフトウェアは **MIT ライセンス** の下で無償公開されています。
+
+---
+
+## 開発コンテキスト
+
+このシステムは、知的障害児の家族を支援するNPOと連携する弁護士が開発しました。
+親が倒れた時に支援者がすぐに必要な情報にアクセスできることを最優先に設計されています。
+
 *Produced by Antigravity Team*

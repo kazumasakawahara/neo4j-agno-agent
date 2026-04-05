@@ -2,6 +2,8 @@
 
 5分で始められるセットアップ手順です。
 
+> **Note**: プライマリUIは Next.js フロントエンド（port 3001）+ FastAPI（port 8001）です。旧 Streamlit UI は `archive/` に退避済みです。
+
 ---
 
 ## 前提条件
@@ -9,8 +11,10 @@
 | ツール | 必須 | 用途 |
 |-------|------|------|
 | Docker Desktop | ○ | Neo4j データベース |
-| Claude Desktop | ○ | AI 分析・操作 |
-| Node.js (npx) | ○ | Neo4j MCP サーバー |
+| Node.js / pnpm | ○ | Next.js フロントエンド |
+| Python 3.12+ / uv | ○ | FastAPI バックエンド |
+| Claude Desktop | △ | AI 分析・操作（Skills方式） |
+| Node.js (npx) | △ | Neo4j MCP サーバー（Claude Desktop利用時） |
 | Git | △ | リポジトリの取得 |
 
 ---
@@ -199,6 +203,42 @@ docker logs support-db-neo4j
 # 再起動
 docker compose restart neo4j
 ```
+
+---
+
+## Next.js フロントエンドの起動
+
+Claude Desktop を使わず、ブラウザUIで操作する場合:
+
+```bash
+# バックエンド（FastAPI）
+cd api && uv run uvicorn app.main:app --reload --port 8001
+
+# フロントエンド（Next.js）
+cd frontend && pnpm install && pnpm dev --port 3001
+
+# ブラウザで http://localhost:3001 を開く
+```
+
+---
+
+## Ollama（オプション: ローカルLLM）
+
+Gemini API キーがない環境やオフライン環境では、Ollama を使用できます。
+
+```bash
+# Ollama のインストール（macOS）
+brew install ollama
+
+# モデルのダウンロード
+ollama pull gemma4:26b
+
+# 環境変数で切り替え
+export CHAT_PROVIDER=ollama
+export OLLAMA_MODEL=gemma4:26b
+```
+
+チャット中に「gemma4を使って」と入力すると、動的にLLMを切り替えることも可能です。
 
 ---
 

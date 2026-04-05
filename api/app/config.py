@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
 
-    # チャットで使用するプロバイダー: "gemini" / "claude" / "openai"
+    ollama_host: str = "http://localhost:11434"
+    ollama_model: str = "gemma4:26b"
+
+    # チャットで使用するプロバイダー: "gemini" / "claude" / "openai" / "ollama"
     chat_provider: str = "gemini"
 
     backend_port: int = 8001
