@@ -12,7 +12,13 @@ export default function SettingsPage() {
     retry: 1,
   });
 
-  const providerLabel = status?.chat_provider === "claude" ? "Claude" : "Gemini";
+  const providerLabels: Record<string, string> = {
+    gemini: "Gemini",
+    claude: "Claude",
+    openai: "OpenAI",
+    ollama: "Ollama (ローカル)",
+  };
+  const providerLabel = providerLabels[status?.chat_provider ?? ""] ?? status?.chat_provider ?? "-";
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -39,6 +45,12 @@ export default function SettingsPage() {
             </Badge>
           </div>
           <div className="flex items-center justify-between">
+            <span className="text-sm">Ollama (ローカルLLM)</span>
+            <Badge variant={status?.ollama_available ? "default" : "destructive"}>
+              {status?.ollama_available ? "接続中" : "未接続"}
+            </Badge>
+          </div>
+          <div className="flex items-center justify-between">
             <span className="text-sm">Neo4j</span>
             <Badge variant={status?.neo4j_available ? "default" : "destructive"}>
               {status?.neo4j_available ? "接続中" : "未接続"}
@@ -60,7 +72,7 @@ export default function SettingsPage() {
             <span className="text-sm font-mono">{status?.chat_model || "-"}</span>
           </div>
           <p className="text-xs text-muted-foreground">
-            .env の CHAT_PROVIDER で切替（gemini / claude）。API サーバー再起動で反映。
+            .env の CHAT_PROVIDER で切替（gemini / claude / ollama）。API サーバー再起動で反映。
           </p>
         </CardContent>
       </Card>

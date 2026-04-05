@@ -1,23 +1,44 @@
-"""Chat router — Gemini-based WebSocket chat with emergency routing."""
+"""Chat router — WebSocket chat with emergency routing.
+
+プロバイダー非依存: Gemini / Claude / OpenAI を設定で切り替え可能。
+セッション対応: Agno の InMemoryDb で会話履歴を自動管理し、
+2ターン目以降も「山田健太さん」などのクライアント名を保持する。
+"""
 import json
 import logging
 import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.agents.gemini_agent import chat
-from app.agents.safety_first import handle_emergency, is_emergency
+from app.agents.gemini_agent import chat, create_session_agent
+from app.agents.safety_first import extract_client_name, handle_emergency, is_emergency
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+def _provider_label() -> str:
+    """現在のチャットプロバイダー名を返す（ルーティング表示用）。"""
+    labels = {
+        "gemini": "Gemini",
+        "claude": "Claude",
+        "openai": "OpenAI",
+        "ollama": "Ollama (ローカル)",
+    }
+    return labels.get(settings.chat_provider, settings.chat_provider)
 
 
 @router.websocket("/ws")
 async def chat_websocket(websocket: WebSocket):
     await websocket.accept()
     session_id = str(uuid.uuid4())
-    # Gemini の会話履歴（function calling 対応のため chat() 内で管理）
-    history: list[dict] = []
+
+    # セッション対応エージェントを作成（WebSocket接続中は同一インスタンスを再利用）
+    agent = create_session_agent(session_id)
+
+    # 会話履歴テキスト（Safety First でクライアント名を抽出するために保持）
+    message_history: list[str] = []
 
     try:
         while True:
@@ -31,7 +52,7 @@ async def chat_websocket(websocket: WebSocket):
                     await websocket.send_json({"type": "done", "session_id": session_id})
                     continue
 
-                # Safety First: 現在進行中の危機のみ（情報照会は Gemini に回す）
+                # Safety First: 一刻を争う危機のみ（それ以外はエージェントが判断）
                 if is_emergency(user_text):
                     await websocket.send_json({
                         "type": "routing",
@@ -39,25 +60,27 @@ async def chat_websocket(websocket: WebSocket):
                         "decision": "emergency_search",
                         "reason": "現在進行中の危機を検知",
                     })
-                    response = handle_emergency(user_text)
+                    # 現在のメッセージにクライアント名がなければ履歴から探す
+                    response = handle_emergency(user_text, message_history)
                 else:
                     await websocket.send_json({
                         "type": "routing",
-                        "agent": "gemini",
+                        "agent": settings.chat_provider,
                         "decision": "chat",
-                        "reason": "Gemini 2.0 Flash（DB検索ツール付き）",
+                        "reason": f"{_provider_label()}（DB検索ツール付き）",
                     })
-                    response = await chat(user_text, history)
-                    # 会話履歴に追加（次のターンでコンテキストとして使用）
-                    history.append({"role": "user", "parts": [user_text]})
-                    history.append({"role": "model", "parts": [response]})
+                    # セッション対応エージェントを使用（履歴は Agno が自動管理）
+                    response = await chat(user_text, agent=agent)
+
+                # 履歴にユーザーメッセージを保存（Safety First 用）
+                message_history.append(user_text)
 
                 # ストリーミング送信
                 for i in range(0, len(response), 30):
                     await websocket.send_json({
                         "type": "stream",
                         "content": response[i:i + 30],
-                        "agent": "gemini",
+                        "agent": settings.chat_provider,
                     })
 
                 await websocket.send_json({"type": "done", "session_id": session_id})

@@ -113,7 +113,8 @@ class TestSearchNgActions:
         mock_records = [
             {"action": "大声を出す", "reason": "パニック誘発", "riskLevel": "Panic"},
         ]
-        with patch("app.lib.db_operations.run_query", return_value=mock_records):
+        with patch("app.agents.gemini_agent._resolve_client_name", return_value=("田中太郎", None)), \
+             patch("app.lib.db_operations.run_query", return_value=mock_records):
             result = json.loads(search_ng_actions("田中太郎"))
 
         assert result["client_name"] == "田中太郎"
@@ -134,7 +135,8 @@ class TestSearchCarePreferences:
         mock_records = [
             {"category": "コミュニケーション", "instruction": "ゆっくり話す", "priority": "高"},
         ]
-        with patch("app.lib.db_operations.run_query", return_value=mock_records):
+        with patch("app.agents.gemini_agent._resolve_client_name", return_value=("田中太郎", None)), \
+             patch("app.lib.db_operations.run_query", return_value=mock_records):
             result = json.loads(search_care_preferences("田中太郎"))
 
         assert len(result["care_preferences"]) == 1
@@ -196,7 +198,8 @@ class TestSearchSupportLogs:
         mock_records = [
             {"date": "2026-04-01", "situation": "パニック", "action": "移動", "effectiveness": "Effective", "note": "ok", "supporter": "佐藤"},
         ]
-        with patch("app.lib.db_operations.run_query", return_value=mock_records):
+        with patch("app.agents.gemini_agent._resolve_client_name", return_value=("田中太郎", None)), \
+             patch("app.lib.db_operations.run_query", return_value=mock_records):
             result = json.loads(search_support_logs("田中太郎"))
 
         assert len(result["logs"]) == 1

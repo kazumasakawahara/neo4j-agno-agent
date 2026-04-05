@@ -36,8 +36,8 @@ class TestSystemStatus:
             resp = client.get("/api/system/status")
 
         data = resp.json()
-        # Default provider is gemini
-        assert data["chat_provider"] in ("gemini", "claude", "openai")
+        # Provider is one of the supported options
+        assert data["chat_provider"] in ("gemini", "claude", "openai", "ollama")
 
     def test_system_status_embedding_model(self, client):
         with patch("app.routers.system.is_db_available", return_value=False):
