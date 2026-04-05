@@ -20,8 +20,8 @@ Streamlit UI に代わる新しいモダン UI です。
 # Neo4j
 docker-compose up -d
 
-# API サーバー (port 8000)
-cd api && uv run uvicorn app.main:app --reload --port 8000
+# API サーバー (port 8001)
+cd api && uv run uvicorn app.main:app --reload --port 8001
 
 # フロントエンド (port 3001)
 cd frontend && pnpm dev --port 3001

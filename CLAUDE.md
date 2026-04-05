@@ -35,7 +35,7 @@ See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
 | Layer | Tool | Port | Purpose |
 |-------|------|------|---------|
 | Frontend | Next.js + shadcn/ui | 3001 | モダン業務UI（全9画面） |
-| API Server | FastAPI | 8000 | REST + WebSocket バックエンド |
+| API Server | FastAPI | 8001 | REST + WebSocket バックエンド |
 | MCP Server | server.py | - | Claude Desktop 連携（既存） |
 | SOS API | FastAPI | 8080 | 緊急通知 + LINE（既存） |
 | Mobile API | FastAPI | 8080 | モバイル入力（既存） |
@@ -43,7 +43,7 @@ See `agents/MANIFESTO.md` for the complete v4.0 manifesto.
 #### 起動方法（Next.js版）
 ```bash
 # API サーバー
-cd api && uv run uvicorn app.main:app --reload --port 8000
+cd api && uv run uvicorn app.main:app --reload --port 8001
 
 # フロントエンド
 cd frontend && pnpm dev --port 3001
