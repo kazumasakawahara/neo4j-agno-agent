@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,20 +7,29 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routers import dashboard, clients, narratives, quicklog, chat, search, ecomap, meetings, system
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.lib.db_operations import is_db_available
 
     if is_db_available():
-        print(f"Neo4j connected: {settings.neo4j_uri}")
+        logger.info("Neo4j connected: %s", settings.neo4j_uri)
+        # ベクトルインデックスの存在を確認・作成
+        try:
+            from app.lib.embedding import ensure_vector_indexes
+            ensure_vector_indexes()
+            logger.info("Vector indexes verified")
+        except Exception as e:
+            logger.warning("Vector index setup failed: %s", e)
     else:
-        print(f"WARNING: Neo4j not available at {settings.neo4j_uri}")
+        logger.warning("Neo4j not available at %s", settings.neo4j_uri)
 
     if settings.gemini_api_key or settings.google_api_key:
-        print("Gemini API key configured")
+        logger.info("Gemini API key configured")
     else:
-        print("WARNING: GEMINI_API_KEY not set")
+        logger.warning("GEMINI_API_KEY not set")
 
     yield
 

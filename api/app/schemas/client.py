@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ClientSummary(BaseModel):
@@ -78,3 +78,21 @@ class ActivityEntry(BaseModel):
     client_name: str
     action: str
     summary: str
+
+
+class ClientCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    dob: str | None = None
+    blood_type: str | None = None
+    conditions: list[str] = []
+
+
+class ClientUpdate(BaseModel):
+    dob: str | None = None
+    blood_type: str | None = None
+
+
+class ClientDeleteResult(BaseModel):
+    status: str
+    client_name: str
+    deleted_count: int = 0

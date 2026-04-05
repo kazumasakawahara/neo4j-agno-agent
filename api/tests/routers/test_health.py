@@ -1,4 +1,7 @@
-"""Integration tests for the /api/health endpoint."""
+"""Tests for /api/health endpoint (kept for backward compatibility).
+
+Comprehensive health tests are in test_system.py.
+"""
 
 
 def test_health(client):

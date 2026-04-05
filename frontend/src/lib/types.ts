@@ -89,6 +89,38 @@ export interface EcomapTemplate {
   description: string;
 }
 
+export interface ClientCreate {
+  name: string;
+  dob?: string;
+  blood_type?: string;
+  conditions?: string[];
+}
+
+export interface ClientUpdate {
+  dob?: string;
+  blood_type?: string;
+}
+
+export interface ClientDeleteResult {
+  status: string;
+  client_name: string;
+  deleted_count: number;
+}
+
+export interface ClientDetail {
+  name: string;
+  dob: string | null;
+  age: number | null;
+  blood_type: string | null;
+  conditions: { name: string; diagnosedDate?: string }[];
+  ng_actions: NgAction[];
+  care_preferences: { category: string; instruction: string; priority?: string }[];
+  key_persons: { name: string; relationship?: string; phone?: string; rank?: number }[];
+  certificates: Record<string, unknown>[];
+  hospital: Record<string, unknown> | null;
+  guardian: Record<string, unknown> | null;
+}
+
 export interface MeetingRecord {
   date: string | null;
   title: string | null;

@@ -92,7 +92,7 @@ def semantic_search(
     return [{"node": dict(r["node"]), "score": r["score"]} for r in records]
 
 
-async def ensure_vector_indexes() -> None:
+def ensure_vector_indexes() -> None:
     """Create vector indexes if they don't exist (idempotent)."""
     for name, idx in VECTOR_INDEXES.items():
         query = f"""
@@ -107,5 +107,5 @@ async def ensure_vector_indexes() -> None:
         try:
             run_query(query)
         except Exception as e:
-            logger.warning(f"Failed to create index {name}: {e}")
-    logger.info(f"Ensured {len(VECTOR_INDEXES)} vector indexes")
+            logger.warning("Failed to create index %s: %s", name, e)
+    logger.info("Ensured %d vector indexes", len(VECTOR_INDEXES))

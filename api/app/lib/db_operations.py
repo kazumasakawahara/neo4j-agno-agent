@@ -152,18 +152,6 @@ def run_query(query: str, params: dict | None = None) -> list[dict]:
 # Node registration helpers
 # ---------------------------------------------------------------------------
 
-def _build_merge_query(label: str, keys: list[str]) -> str:
-    """Build a MERGE query for a node with the given merge keys."""
-    key_conditions = " AND ".join(f"n.{k} = ${k}" for k in keys)
-    set_clause = ", ".join(f"n.{k} = ${k}" for k in keys)
-    return (
-        f"MERGE (n:{label} {{{', '.join(f'{k}: ${k}' for k in keys)}}})\n"
-        f"ON CREATE SET n += $props\n"
-        f"ON MATCH SET n += $props\n"
-        f"RETURN n"
-    )
-
-
 def _register_node(
     session: Any,
     label: str,

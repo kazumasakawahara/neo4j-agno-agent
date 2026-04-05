@@ -2,11 +2,27 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 
 from fastapi import APIRouter, HTTPException, Query
-from app.lib.db_operations import run_query
+
+from app.lib.db_operations import create_audit_log, run_query
 from app.lib.utils import calculate_age
+from app.schemas.client import (
+    CarePreference,
+    ClientCreate,
+    ClientDeleteResult,
+    ClientDetail,
+    ClientSummary,
+    ClientUpdate,
+    EmergencyInfo,
+    KeyPerson,
+    NgAction,
+    SupportLogEntry,
+)
+
+logger = logging.getLogger(__name__)
 
 _KANA_ROW_MAP = {
     "あ": "あいうえお",
@@ -56,12 +72,17 @@ def _name_to_kana(name: str) -> str:
                 parts.append(ch)
         return "".join(parts)
 
-    # 漢字名は pykakasi で変換
-    from pykakasi import kakasi as Kakasi
-
-    kks = Kakasi()
+    # 漢字名は pykakasi で変換（キャッシュ済みインスタンスを使用）
+    kks = _get_kakasi()
     result = kks.convert(name)
     return "".join(item["hira"] for item in result)
+
+
+@functools.lru_cache(maxsize=1)
+def _get_kakasi():
+    """pykakasi インスタンスをキャッシュして再利用する。"""
+    from pykakasi import kakasi as Kakasi
+    return Kakasi()
 
 
 def _is_alpha_name(name: str) -> bool:
@@ -77,17 +98,55 @@ def _matches_kana_row(kana: str, row_prefix: str) -> bool:
     """
     chars = _KANA_ROW_MAP.get(row_prefix, row_prefix)
     return any(kana.startswith(c) for c in chars)
-from app.schemas.client import (
-    CarePreference,
-    ClientDetail,
-    ClientSummary,
-    EmergencyInfo,
-    KeyPerson,
-    NgAction,
-    SupportLogEntry,
-)
 
-logger = logging.getLogger(__name__)
+# ---------------------------------------------------------------------------
+# パース用ヘルパー関数（get_client / get_emergency の重複排除）
+# ---------------------------------------------------------------------------
+
+_RISK_ORDER = {"LifeThreatening": 1, "Panic": 2}
+
+
+def _parse_ng_actions(raw: list[dict]) -> list[NgAction]:
+    """NgAction の生データをパースし、riskLevel 順にソートして返す。"""
+    filtered = [n for n in raw if n.get("action")]
+    filtered.sort(key=lambda n: _RISK_ORDER.get(n.get("riskLevel", ""), 3))
+    return [
+        NgAction(
+            action=n["action"],
+            reason=n.get("reason"),
+            risk_level=n.get("riskLevel") or "Discomfort",
+        )
+        for n in filtered
+    ]
+
+
+def _parse_care_preferences(raw: list[dict]) -> list[CarePreference]:
+    """CarePreference の生データをパースして返す。"""
+    return [
+        CarePreference(
+            category=cp["category"],
+            instruction=cp["instruction"],
+            priority=cp.get("priority"),
+        )
+        for cp in raw
+        if cp.get("category")
+    ]
+
+
+def _parse_key_persons(raw: list[dict]) -> list[KeyPerson]:
+    """KeyPerson の生データをパースし、rank 順にソートして返す。"""
+    filtered = [kp for kp in raw if kp.get("name")]
+    filtered.sort(key=lambda kp: kp.get("rank") or 999)
+    return [
+        KeyPerson(
+            name=kp["name"],
+            relationship=kp.get("relationship"),
+            phone=kp.get("phone"),
+            rank=kp.get("rank"),
+        )
+        for kp in filtered
+    ]
+
 
 router = APIRouter(prefix="/api/clients", tags=["clients"])
 
@@ -100,12 +159,15 @@ router = APIRouter(prefix="/api/clients", tags=["clients"])
 @router.get("", response_model=list[ClientSummary])
 def list_clients(
     kana_prefix: str | None = Query(default=None, description="かな行頭文字でフィルタ（例: あ）"),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=200),
 ) -> list[ClientSummary]:
     """クライアント一覧を返す。kana_prefix が指定されれば kana フィールドで前方一致フィルタ。"""
     try:
         rows = run_query(
             """
             MATCH (c:Client)
+            WHERE c.archived IS NULL OR c.archived = false
             OPTIONAL MATCH (c)-[:HAS_CONDITION]->(cond:Condition)
             RETURN c.name AS name,
                    c.dob AS dob,
@@ -145,7 +207,7 @@ def list_clients(
                     conditions=conditions,
                 )
             )
-        return summaries
+        return summaries[skip : skip + limit]
 
     except Exception as exc:
         logger.error("list_clients failed: %s", exc, exc_info=True)
@@ -194,40 +256,9 @@ def get_client(name: str) -> ClientDetail:
         # null エントリを除去（OPTIONAL MATCH で null プロパティが collect される）
         conditions = [c for c in (row.get("conditions") or []) if c.get("name")]
 
-        ng_actions_raw = [n for n in (row.get("ng_actions") or []) if n.get("action")]
-        # riskLevel でソート（LifeThreatening → Panic → その他）
-        risk_order = {"LifeThreatening": 1, "Panic": 2}
-        ng_actions_raw.sort(key=lambda n: risk_order.get(n.get("riskLevel", ""), 3))
-        ng_actions = [
-            NgAction(
-                action=n["action"],
-                reason=n.get("reason"),
-                risk_level=n.get("riskLevel") or "Discomfort",
-            )
-            for n in ng_actions_raw
-        ]
-
-        care_preferences = [
-            CarePreference(
-                category=cp["category"],
-                instruction=cp["instruction"],
-                priority=cp.get("priority"),
-            )
-            for cp in (row.get("care_preferences") or [])
-            if cp.get("category")
-        ]
-
-        kp_raw = [kp for kp in (row.get("key_persons") or []) if kp.get("name")]
-        kp_raw.sort(key=lambda kp: kp.get("rank") or 999)
-        key_persons = [
-            KeyPerson(
-                name=kp["name"],
-                relationship=kp.get("relationship"),
-                phone=kp.get("phone"),
-                rank=kp.get("rank"),
-            )
-            for kp in kp_raw
-        ]
+        ng_actions = _parse_ng_actions(row.get("ng_actions") or [])
+        care_preferences = _parse_care_preferences(row.get("care_preferences") or [])
+        key_persons = _parse_key_persons(row.get("key_persons") or [])
 
         certificates = [c for c in (row.get("certificates") or []) if c]
         hospital = row.get("hospital")
@@ -285,40 +316,9 @@ def get_emergency(name: str) -> EmergencyInfo:
 
         row = rows[0]
 
-        # NgActions — riskLevel でソート（LifeThreatening → Panic → その他）
-        ng_raw = [n for n in (row.get("ng_actions") or []) if n.get("action")]
-        risk_order = {"LifeThreatening": 1, "Panic": 2}
-        ng_raw.sort(key=lambda n: risk_order.get(n.get("riskLevel", ""), 3))
-        ng_actions = [
-            NgAction(
-                action=n["action"],
-                reason=n.get("reason"),
-                risk_level=n.get("riskLevel") or "Discomfort",
-            )
-            for n in ng_raw
-        ]
-
-        care_preferences = [
-            CarePreference(
-                category=cp["category"],
-                instruction=cp["instruction"],
-                priority=cp.get("priority"),
-            )
-            for cp in (row.get("care_preferences") or [])
-            if cp.get("category")
-        ]
-
-        kp_raw = [kp for kp in (row.get("key_persons") or []) if kp.get("name")]
-        kp_raw.sort(key=lambda kp: kp.get("rank") or 999)
-        key_persons = [
-            KeyPerson(
-                name=kp["name"],
-                relationship=kp.get("relationship"),
-                phone=kp.get("phone"),
-                rank=kp.get("rank"),
-            )
-            for kp in kp_raw
-        ]
+        ng_actions = _parse_ng_actions(row.get("ng_actions") or [])
+        care_preferences = _parse_care_preferences(row.get("care_preferences") or [])
+        key_persons = _parse_key_persons(row.get("key_persons") or [])
 
         return EmergencyInfo(
             client_name=name,
@@ -380,4 +380,173 @@ def get_logs(name: str, limit: int = Query(default=50, ge=1, le=200)) -> list[Su
         raise
     except Exception as exc:
         logger.error("get_logs failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# POST /api/clients
+# ---------------------------------------------------------------------------
+
+
+@router.post("", response_model=ClientDetail, status_code=201)
+def create_client(data: ClientCreate) -> ClientDetail:
+    """新規クライアントを作成する。conditions が指定されれば Condition ノードも MERGE する。"""
+    try:
+        # MERGE で冪等にクライアントノードを作成
+        params: dict = {"name": data.name}
+        set_clauses: list[str] = []
+        if data.dob is not None:
+            set_clauses.append("c.dob = $dob")
+            params["dob"] = data.dob
+        if data.blood_type is not None:
+            set_clauses.append("c.bloodType = $blood_type")
+            params["blood_type"] = data.blood_type
+
+        set_part = f"SET {', '.join(set_clauses)}" if set_clauses else ""
+        run_query(
+            f"""
+            MERGE (c:Client {{name: $name}})
+            {set_part}
+            RETURN c.name AS name
+            """,
+            params,
+        )
+
+        # Condition ノードの MERGE とリレーション作成
+        for cond_name in data.conditions:
+            run_query(
+                """
+                MATCH (c:Client {name: $name})
+                MERGE (cond:Condition {name: $cond_name})
+                MERGE (c)-[:HAS_CONDITION]->(cond)
+                """,
+                {"name": data.name, "cond_name": cond_name},
+            )
+
+        # 監査ログの記録
+        create_audit_log(
+            user_name="api",
+            action="CREATE",
+            target_type="Client",
+            target_name=data.name,
+            details=f"Created client '{data.name}' via API",
+            client_name=data.name,
+        )
+
+        return get_client(data.name)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("create_client failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# PUT /api/clients/{name}
+# ---------------------------------------------------------------------------
+
+
+@router.put("/{name}", response_model=ClientDetail)
+def update_client(name: str, data: ClientUpdate) -> ClientDetail:
+    """クライアント情報を更新する（non-None フィールドのみ）。"""
+    try:
+        # 存在チェック
+        exists = run_query(
+            "MATCH (c:Client {name: $name}) RETURN c.name AS n LIMIT 1",
+            {"name": name},
+        )
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Client '{name}' not found")
+
+        # 更新対象フィールドを動的に構築（全フィールド None なら 400）
+        params: dict = {"name": name}
+        set_clauses: list[str] = []
+        if data.dob is not None:
+            set_clauses.append("c.dob = $dob")
+            params["dob"] = data.dob
+        if data.blood_type is not None:
+            set_clauses.append("c.bloodType = $blood_type")
+            params["blood_type"] = data.blood_type
+
+        if not set_clauses:
+            raise HTTPException(status_code=400, detail="更新するフィールドがありません。")
+
+        if set_clauses:
+            run_query(
+                f"""
+                MATCH (c:Client {{name: $name}})
+                SET {', '.join(set_clauses)}
+                RETURN c.name AS name
+                """,
+                params,
+            )
+
+        # 監査ログの記録
+        updated_fields = [k for k, v in data.model_dump().items() if v is not None]
+        create_audit_log(
+            user_name="api",
+            action="UPDATE",
+            target_type="Client",
+            target_name=name,
+            details=f"Updated fields: {', '.join(updated_fields) or 'none'}",
+            client_name=name,
+        )
+
+        return get_client(name)
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("update_client failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/clients/{name}
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/{name}", response_model=ClientDeleteResult)
+def delete_client(name: str) -> ClientDeleteResult:
+    """クライアントを論理削除（アーカイブ）する。実データは削除しない。"""
+    try:
+        # 存在チェック
+        exists = run_query(
+            "MATCH (c:Client {name: $name}) RETURN c.name AS n LIMIT 1",
+            {"name": name},
+        )
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Client '{name}' not found")
+
+        # 論理削除: archived フラグと日時を設定
+        run_query(
+            """
+            MATCH (c:Client {name: $name})
+            SET c.archived = true, c.archivedAt = datetime()
+            RETURN c.name AS name
+            """,
+            {"name": name},
+        )
+
+        # 監査ログの記録
+        create_audit_log(
+            user_name="api",
+            action="ARCHIVE",
+            target_type="Client",
+            target_name=name,
+            details=f"Archived (soft-deleted) client '{name}' via API",
+            client_name=name,
+        )
+
+        return ClientDeleteResult(
+            status="archived",
+            client_name=name,
+            deleted_count=1,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("delete_client failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc

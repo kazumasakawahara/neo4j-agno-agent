@@ -23,6 +23,15 @@ export const api = {
     get: (name: string) => fetchApi(`/api/clients/${encodeURIComponent(name)}`),
     emergency: (name: string) => fetchApi(`/api/clients/${encodeURIComponent(name)}/emergency`),
     logs: (name: string) => fetchApi(`/api/clients/${encodeURIComponent(name)}/logs`),
+    create: (data: import("./types").ClientCreate) =>
+      fetchApi<import("./types").ClientDetail>("/api/clients", { method: "POST", body: JSON.stringify(data) }),
+    update: (name: string, data: import("./types").ClientUpdate) =>
+      fetchApi<import("./types").ClientDetail>(`/api/clients/${encodeURIComponent(name)}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    delete: (name: string) =>
+      fetchApi<import("./types").ClientDeleteResult>(`/api/clients/${encodeURIComponent(name)}`, { method: "DELETE" }),
   },
   system: {
     status: () => fetchApi<import("./types").SystemStatus>("/api/system/status"),
