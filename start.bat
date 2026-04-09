@@ -3,14 +3,28 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 
+echo.
 echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-echo   親亡き後支援データベース - 起動スクリプト
+echo   親亡き後支援データベース - 一発起動スクリプト
 echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 echo.
 
 REM ──────────────────────────────────────────────────
-REM 1. uv パッケージマネージャの確認
+REM 1. 前提条件チェック
 REM ──────────────────────────────────────────────────
+set "MISSING="
+
+docker info >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Docker Desktop が起動していません。
+    echo         Docker Desktop を起動してから、もう一度実行してください。
+    echo         https://docs.docker.com/get-docker/
+    echo.
+    pause
+    exit /b 1
+)
+echo [OK] Docker Desktop は起動済み
+
 uv --version >nul 2>&1
 if %errorlevel% neq 0 (
     echo [SETUP] uv パッケージマネージャをインストールしています...
@@ -19,24 +33,33 @@ if %errorlevel% neq 0 (
     echo [重要] uv がインストールされました。
     echo        このウィンドウを閉じて、start.bat をもう一度実行してください。
     pause
-    exit
+    exit /b 0
 )
+echo [OK] uv を確認
+
+where pnpm >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [SETUP] pnpm をインストールしています...
+    npm install -g pnpm
+    if %errorlevel% neq 0 (
+        echo [ERROR] pnpm のインストールに失敗しました。
+        echo         Node.js がインストールされているか確認してください。
+        echo         https://nodejs.org/
+        pause
+        exit /b 1
+    )
+)
+echo [OK] pnpm を確認
+echo.
 
 REM ──────────────────────────────────────────────────
-REM 2. Python 依存パッケージのインストール
-REM ──────────────────────────────────────────────────
-echo [SETUP] 依存パッケージをインストールしています...
-uv sync
-
-REM ──────────────────────────────────────────────────
-REM 3. Claude Desktop Skills のインストール
+REM 2. Claude Desktop Skills のインストール
 REM ──────────────────────────────────────────────────
 echo [SETUP] Claude Desktop Skills を確認しています...
 
 set "SKILLS_SOURCE=%~dp0claude-skills"
 set "SKILLS_TARGET=%USERPROFILE%\.claude\skills"
 
-REM Skills 一覧
 set SKILLS=neo4j-support-db livelihood-support provider-search emergency-protocol ecomap-generator html-to-pdf inheritance-calculator wamnet-provider-sync
 
 if not exist "%SKILLS_SOURCE%" (
@@ -44,7 +67,6 @@ if not exist "%SKILLS_SOURCE%" (
     goto :skills_done
 )
 
-REM ターゲットディレクトリの作成
 if not exist "%SKILLS_TARGET%" (
     mkdir "%SKILLS_TARGET%"
     echo [OK] %SKILLS_TARGET% を作成しました
@@ -55,7 +77,6 @@ set SKILLS_SKIPPED=0
 
 for %%S in (%SKILLS%) do (
     if exist "%SKILLS_SOURCE%\%%S\SKILL.md" (
-        REM スキルが更新されているかチェック（SKILL.md の比較）
         if exist "%SKILLS_TARGET%\%%S\SKILL.md" (
             fc /b "%SKILLS_SOURCE%\%%S\SKILL.md" "%SKILLS_TARGET%\%%S\SKILL.md" >nul 2>&1
             if !errorlevel! equ 0 (
@@ -72,50 +93,120 @@ for %%S in (%SKILLS%) do (
             set /a SKILLS_INSTALLED+=1
         )
     ) else (
-        echo [WARN] %%S のソースが見つかりません。スキップします。
         set /a SKILLS_SKIPPED+=1
     )
 )
 
-echo [OK] Skills インストール完了
+echo [OK] Skills 確認完了
 echo.
 
 :skills_done
 
 REM ──────────────────────────────────────────────────
-REM 4. 初回設定ウィザード
+REM 3. 初回設定 (.env チェック)
 REM ──────────────────────────────────────────────────
 if not exist .env (
-    echo [SETUP] 初回設定ウィザードを起動します...
-    uv run python setup_wizard.py
+    if exist .env.example (
+        echo [SETUP] .env ファイルを作成しています...
+        copy .env.example .env >nul
+        echo [WARN] .env ファイルを作成しました。APIキーを設定してください。
+        echo        テキストエディタで .env を開いて GEMINI_API_KEY を設定してください。
+        echo.
+        notepad .env
+        echo.
+        echo [INFO] .env を保存したら、何かキーを押して続行してください...
+        pause >nul
+    ) else (
+        echo [WARN] .env.example が見つかりません。SETUP_GUIDE.md を参照して .env を作成してください。
+    )
 )
 
 REM ──────────────────────────────────────────────────
-REM 5. Docker / Neo4j の起動
+REM 4. Python 依存関係のインストール
 REM ──────────────────────────────────────────────────
-docker info >nul 2>&1
-if %errorlevel% neq 0 (
-    echo.
-    echo [ERROR] Docker が起動していません。
-    echo         Docker Desktop を起動してから、もう一度 start.bat を実行してください。
-    echo         https://docs.docker.com/get-docker/
-    pause
-    exit
+echo [SETUP] Python 依存関係を確認中...
+if not exist ".venv" (
+    uv sync
+    echo [OK] Python 仮想環境を作成しました
+) else (
+    echo [OK] Python 仮想環境は存在済み
 )
 
-echo [START] データベースを起動しています...
-docker-compose up -d neo4j
+REM ──────────────────────────────────────────────────
+REM 5. Node.js 依存関係のインストール
+REM ──────────────────────────────────────────────────
+echo [SETUP] Node.js 依存関係を確認中...
+if not exist "frontend\node_modules" (
+    cd frontend
+    pnpm install
+    cd ..
+    echo [OK] node_modules をインストールしました
+) else (
+    echo [OK] node_modules は存在済み
+)
+echo.
 
 REM ──────────────────────────────────────────────────
-REM 6. アプリケーションの起動
+REM 6. Neo4j データベースの起動
 REM ──────────────────────────────────────────────────
-echo [START] ダッシュボードを起動しています...
-start "Post-Parent Dashboard" /min uv run streamlit run app.py
+echo [START] Neo4j データベースを起動中...
+docker compose up -d neo4j 2>nul || docker-compose up -d neo4j 2>nul
+echo [OK] Neo4j コンテナを起動しました
 
+REM Neo4j 準備待ち（最大30秒）
+echo [INFO] Neo4j の準備を待機中...
+set RETRIES=0
+:wait_neo4j
+if %RETRIES% geq 6 (
+    echo [WARN] Neo4j の応答が遅いですが、バックグラウンドで起動を続けます
+    goto :neo4j_done
+)
+timeout /t 5 /nobreak >nul
+curl -s http://localhost:7474 >nul 2>&1
+if %errorlevel% equ 0 (
+    echo [OK] Neo4j 準備完了 (bolt://localhost:7687)
+    goto :neo4j_done
+)
+set /a RETRIES+=1
+goto :wait_neo4j
+
+:neo4j_done
+echo.
+
+REM ──────────────────────────────────────────────────
+REM 7. API サーバーの起動（バックグラウンド）
+REM ──────────────────────────────────────────────────
+echo [START] API サーバーを起動中 (port 8001)...
+start "OyagamiDB-API" /min cmd /c "cd /d "%~dp0api" && uv run uvicorn app.main:app --reload --port 8001"
+echo [OK] API サーバーをバックグラウンドで起動しました
+
+REM ──────────────────────────────────────────────────
+REM 8. フロントエンドの起動（バックグラウンド）
+REM ──────────────────────────────────────────────────
+echo [START] フロントエンドを起動中 (port 3001)...
+start "OyagamiDB-Frontend" /min cmd /c "cd /d "%~dp0frontend" && pnpm dev --port 3001"
+echo [OK] フロントエンドをバックグラウンドで起動しました
+echo.
+
+REM ──────────────────────────────────────────────────
+REM 9. ブラウザで開く（5秒後）
+REM ──────────────────────────────────────────────────
+echo [INFO] 5秒後にブラウザを開きます...
+timeout /t 5 /nobreak >nul
+start "" "http://localhost:3001"
+
+REM ──────────────────────────────────────────────────
+REM 完了メッセージ
+REM ──────────────────────────────────────────────────
 echo.
 echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-echo   起動完了！ブラウザで http://localhost:8501 を開いてください
+echo   親なき後支援DB が起動しました
+echo.
+echo   フロントエンド : http://localhost:3001
+echo   API サーバー   : http://localhost:8001/docs
+echo   Neo4j Browser  : http://localhost:7474
+echo.
+echo   停止するには stop.bat を実行してください
 echo ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 echo.
-
 pause
