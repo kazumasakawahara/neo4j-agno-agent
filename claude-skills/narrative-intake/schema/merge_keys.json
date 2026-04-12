@@ -1,0 +1,25 @@
+{
+  "_source": "lib/db_new_operations.py::MERGE_KEYS (2026-04-12 mirror)",
+  "_note": "merge_keys に含まれるラベルはノードJSONに必ず mergeKey フィールドを付けること。含まれないラベルは常に CREATE される。",
+  "merge_keys": {
+    "Client": ["name"],
+    "Supporter": ["name"],
+    "NgAction": ["action"],
+    "CarePreference": ["category", "instruction"],
+    "Condition": ["name"],
+    "KeyPerson": ["name"],
+    "Organization": ["name"],
+    "ServiceProvider": ["name"],
+    "Hospital": ["name"],
+    "Guardian": ["name"],
+    "Certificate": ["type"]
+  },
+  "create_only": [
+    "SupportLog",
+    "LifeHistory",
+    "Wish",
+    "AuditLog",
+    "PublicAssistance",
+    "MeetingRecord"
+  ]
+}

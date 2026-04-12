@@ -101,6 +101,7 @@ cd frontend && pnpm dev --port 3001
    - `provider-search/`: 事業所検索・口コミ用Cypherテンプレート（9種、port 7687）
    - `emergency-protocol/`: 緊急時対応プロトコル（DB非依存）
    - `ecomap-generator/`: エコマップ生成（Mermaid/SVG）
+   - `narrative-intake/`: 長文ナラティブ → 構造化グラフJSON → `/api/narrative/intake` 書き込み（日本語最適化・4フェーズプロトコル、port 8001 経由）
    - Install: `./setup.sh --skills` creates symlinks from repo to `~/.claude/skills/`
 
 8. **Ecomap Generator** (`skills/ecomap_generator/`):
@@ -219,7 +220,7 @@ result = run_query("MATCH (c:Client) RETURN c.name LIMIT 10")
 
 ### Skills & Neo4j MCP (Layer 3)
 
-Five skills provide Cypher templates executed via the generic neo4j MCP:
+Six skills provide Cypher templates (read via neo4j MCP) or narrative ingestion (write via FastAPI):
 
 | Skill | Neo4j Port | Templates | Purpose |
 |-------|-----------|-----------|---------|
@@ -228,6 +229,13 @@ Five skills provide Cypher templates executed via the generic neo4j MCP:
 | provider-search | 7687 | 6 read + 3 write | 事業所検索・口コミ |
 | emergency-protocol | N/A | N/A | 緊急時プロトコル |
 | ecomap-generator | N/A | N/A | エコマップ生成 |
+| narrative-intake | 7687 (via API 8001) | 4-phase write | 長文ナラティブ → 構造化グラフ書き込み（日本語最適化・安全性二重検証・sourceHash冪等性） |
+
+**narrative-intake の位置づけ（Layer 3 書き込みチャネル）:**
+Layer 1/2 の Streamlit/Next.js フォームで細切れに入力する代わりに、Claude Desktop 単独で長文narrative
+→ 構造化 → Neo4j 書き込みまでを完結させる。FastAPI `/api/narrative/intake` エンドポイントが allowlist 二重検証
+・既存 NgAction との安全性チェック・sourceHash ベース冪等性・embedding 自動付与を担い、書き込み後は
+他の read 系 skill と neo4j MCP でそのまま分析・提案が可能。
 
 See `agents/ROUTING.md` for guidance on choosing between skills.
 See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for all LLMs/agents).
@@ -336,7 +344,8 @@ neo4j-agno-agent/
 │   ├── livelihood-support/ # 生活困窮者DB (7-pillar, port 7688)
 │   ├── provider-search/    # 事業所検索・口コミ (port 7687)
 │   ├── emergency-protocol/ # 緊急時対応プロトコル (read-only)
-│   └── ecomap-generator/   # エコマップ生成 (Mermaid/SVG)
+│   ├── ecomap-generator/   # エコマップ生成 (Mermaid/SVG)
+│   └── narrative-intake/   # 長文ナラティブ→Neo4j書き込み (via API 8001, 日本語最適化)
 ├── configs/                # Claude Desktop config templates
 │   ├── claude_desktop_config.skills.json  # Skills方式（推奨）
 │   └── claude_desktop_config.mcp.json     # レガシーMCP方式

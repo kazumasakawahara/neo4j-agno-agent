@@ -1,8 +1,11 @@
 # スキル＆Neo4j MCPルーティングガイド
 
-**目的:** 5つのスキルとNeo4j MCPツールの使い分けを定義する。
+**目的:** 6つのスキルとNeo4j MCPツールの使い分けを定義する。
 
-**アーキテクチャ:** 各スキルはCypherテンプレートを提供し、汎用 neo4j MCP の `read_neo4j_cypher` / `write_neo4j_cypher` で実行する。
+**アーキテクチャ:**
+- **読み取り系スキル（neo4j-support-db / livelihood-support / provider-search）** は Cypher テンプレートを提供し、汎用 neo4j MCP の `read_neo4j_cypher` / `write_neo4j_cypher` で実行する。
+- **書き込み系スキル（narrative-intake）** は FastAPI `/api/narrative/intake` エンドポイント（port 8001）経由で allowlist 二重検証・安全性チェック・冪等性チェック・embedding 付与を行う。Cypher 直接書き込みではない。
+- **DB非依存スキル（emergency-protocol / ecomap-generator）** はプロトコル参照・可視化のみ。
 
 ---
 
@@ -126,7 +129,39 @@
 
 ---
 
-### 6. neo4j MCP（汎用データベースアクセス）
+### 6. narrative-intake（長文ナラティブ → 構造化書き込み）
+
+**SKILL.md:** `~/.claude/skills/narrative-intake/SKILL.md`
+**書き込み先:** FastAPI `http://localhost:8001/api/narrative/intake`（Neo4j port 7687 は API が仲介）
+**対象業務:** 計画相談支援のアセスメント記録、面談録、手書きメモ等の長文をそのまま Neo4j へ構造化保存
+
+**トリガーワード:**
+- 「以下のアセスメント記録を登録して」「この面談メモをDBに入れて」
+- 「本人の生育歴と現状を記録」「新規ケース登録」
+- 長文narrative（200字以上）＋クライアント名
+
+**処理フロー（4フェーズ・プロトコル）:**
+
+| Phase | 内容 | 成果物 |
+|-------|------|--------|
+| 1. Extraction | 日本語前処理（NFC正規化・元号→西暦・敬称除去・相対時間解決）→ LifeStage 単位チャンキング → Gemini 構造化 | temp_id 付きノード＋リレーション JSON |
+| 2. Validation | allowlist（17ラベル／21リレーション）で二重検証 → 拒否候補の列挙 | validated / rejected 分離済みグラフ |
+| 3. Preview | `/api/narrative/preview-context` で既存 NgAction / 重複候補を取得 → ユーザーに差分プレビュー提示 | 人間のレビュー |
+| 4. Write + Audit | `/api/narrative/intake`（dryRun=false）で書き込み。MERGE ベース冪等化＋sourceHash 重複検出＋LifeThreatening 安全性違反で 409＋AuditLog 自動生成＋embedding 自動付与 | 登録済みノード件数・monkey-patch 可能な safetyCheck / duplicateCheck レスポンス |
+
+**Cypherテンプレート:** なし（すべて FastAPI ルーター `api/app/routers/narrative_intake.py` 経由）
+
+**重要なガードレール:**
+- ALLOWED_LABELS / ALLOWED_REL_TYPES / MERGE_KEYS の単一情報源は `api/app/lib/db_operations.py`。
+  skill 側 `schema/*.json` は `scripts/sync_narrative_intake_schema.py` で同期する（`--check` でドリフト検出、`--apply` で反映）。
+- 既存 NgAction（LifeThreatening）と衝突する narrative は 409 で拒否される。
+- sourceHash（入力全文の SHA256）で同じ記録を二重登録しない。
+
+**書き込み後の分析:** 登録完了後は通常通り neo4j-support-db / provider-search / ecomap-generator で可視化・分析可能。
+
+---
+
+### 7. neo4j MCP（汎用データベースアクセス）
 
 **接続先:** `bolt://localhost:7687`（デフォルト）
 
@@ -153,6 +188,13 @@
 │  │           ├─ 障害福祉クライアント → neo4j-support-db テンプレート2
 │  │           └─ 生活保護受給者 → livelihood-support テンプレート9（訪問前ブリーフィング）
 │  └─ NO → 続行
+│
+├─ 長文narrative（200字以上）＋「登録」「記録」「DBに入れて」？
+│  └─ YES → narrative-intake スキル（4フェーズプロトコル）
+│          Phase 1: 日本語前処理＋Gemini構造化
+│          Phase 2: allowlist二重検証
+│          Phase 3: /api/narrative/preview-context で既存データ確認
+│          Phase 4: /api/narrative/intake で書き込み＋embedding付与
 │
 ├─ クライアント/受給者名が含まれる？
 │  ├─ YES → どちらのDBに登録されているか確認
@@ -219,9 +261,16 @@
 
 単一のケースで複数のスキルを使うことがある。
 
-**例：障害福祉サービス利用者が生活保護も受給している場合**
+**例1：障害福祉サービス利用者が生活保護も受給している場合**
 1. 緊急手順 → emergency-protocol スキル
 2. 障害福祉情報 → neo4j-support-db テンプレート2（プロフィール）
 3. 経済リスク確認 → livelihood-support テンプレート2b（第7柱）
 4. 事業所検索 → provider-search テンプレート1
 5. エコマップ → ecomap-generator スキル
+
+**例2：新規ケースのアセスメント記録 → 書き込み → 即座に分析**
+1. 長文narrative受領 → narrative-intake スキルで 4 フェーズ書き込み
+2. 書き込み完了後、Client名をキーに neo4j-support-db テンプレート2（4本柱プロフィール）で登録内容を検証
+3. 既存類似ケースの確認 → neo4j-support-db テンプレート6（ケアパターン発見）
+4. 支援計画に合う事業所候補 → provider-search テンプレート1
+5. 支援ネットワーク可視化 → ecomap-generator スキル

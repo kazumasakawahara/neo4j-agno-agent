@@ -44,6 +44,7 @@ SKILLS=(
     "html-to-pdf"
     "inheritance-calculator"
     "wamnet-provider-sync"
+    "narrative-intake"
 )
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

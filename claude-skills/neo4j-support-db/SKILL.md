@@ -319,21 +319,78 @@ LIMIT $limit
 
 ### 支援記録の登録
 
-#### ★重要: AI構造化プロセス
+> **【重要】長文ナラティブ・家族聴き取り・面談書き起こしなど、複数ノード＋リレーションをまとめて構造化する場合は、本スキルの単発Cypher方式ではなく `narrative-intake` スキルを優先して使用してください。** 本セクションは短い単発の支援記録（1イベント相当）を対象とします。
 
-旧システムでは Gemini API で支援記録テキストを構造化していたが、スキルベースの新システムでは **Claude自身がテキストを構造化** してからCypherで登録する。
+#### ★重要: AI構造化プロセス（4段階プロトコル）
 
-**構造化の手順**:
+旧システムでは Gemini API で支援記録テキストを構造化していたが、スキルベースの新システムでは **Claude自身がテキストを構造化** してからCypherで登録する。必ず以下の4段階を守ること。
+
+**Phase 1: 抽出（Extraction）**
 1. ユーザーから物語風テキストを受け取る
 2. 以下の情報を抽出する:
    - `situation`: 何が起きたか（状況）
    - `action`: どう対応したか（対応）
-   - `effectiveness`: 効果があったか（`Effective` / `Ineffective` / `Neutral`）
+   - `effectiveness`: 効果があったか（`Effective` / `Ineffective` / `Neutral` / `Unknown`）
    - `note`: その他のメモ
-   - 支援者名（判別できる場合）
+   - 支援者名（判別できる場合、不明なら "不明"）
 3. 追加で抽出可能なら:
    - 新たな禁忌事項（NgAction）
    - 新たな推奨ケア（CarePreference）
+4. **創作禁止**: 入力テキストに明示的に書かれていない情報は絶対に推測・補完しない
+
+**Phase 2: 検証（Validation）**
+
+抽出結果が以下のスキーマ規約に準拠しているか Claude 自身で必ず確認すること（違反があれば落として警告）:
+
+- ノードラベルは `docs/NEO4J_SCHEMA_CONVENTION.md` の許可リストのみ（PascalCase）
+- リレーション型は `MUST_AVOID`, `LOGGED`, `ABOUT`, `REQUIRES` など許可リストのみ（UPPER_SNAKE_CASE）
+- プロパティキーは camelCase、かつ `^[a-zA-Z_][a-zA-Z0-9_]*$` にマッチすること（日本語キー禁止）
+- 列挙値は英語 PascalCase（`Effective`, `Panic`, `LifeThreatening` 等）
+- 日付は西暦 `YYYY-MM-DD` に変換（和暦は必ず変換）
+
+**Phase 3: プレビュー（Preview）— ユーザー承認を必ず取る**
+
+登録前に以下のフォーマットで内容を提示し、ユーザーの明示的承認を待つこと:
+
+```
+【登録プレビュー】
+対象クライアント: 山田健太
+日付: 2026-04-12
+支援者: 鈴木
+─────────────────────────
+■ SupportLog（新規）
+  situation: パニック発生
+  action:    イヤーマフ装着
+  effectiveness: Effective
+  note:      5分で落ち着いた
+
+■ NgAction（追加候補）
+  action:    突然の大きな音
+  riskLevel: Panic
+
+⚠️ 既存禁忌事項との抵触: なし
+この内容で登録してよろしいですか？
+```
+
+**Phase 4: 登録＋監査（Write & Audit）**
+
+承認後、以下を **1 セットで** 実行する:
+
+1. 下記「支援記録の書き込みCypher」で SupportLog 登録
+2. 追加で NgAction / CarePreference があれば対応するCypherで登録
+3. 監査ログ（AuditLog）を必ず記録
+
+#### ★安全性コンプライアンスチェック（Phase 3 の必須サブステップ）
+
+登録前に、対象クライアントの既存 NgAction を読み取って、ナラティブ内の行動が抵触していないかを Claude 自身で判定すること。
+
+```cypher
+MATCH (c:Client)-[:MUST_AVOID]->(ng:NgAction)
+WHERE c.name CONTAINS $clientName
+RETURN ng.action AS 禁忌行動, ng.riskLevel AS リスクレベル, ng.reason AS 理由
+```
+
+抵触が疑われる場合、プレビューに `⚠️ 禁忌抵触の可能性: 禁忌事項「〜」に該当する行動が記録されています` と**赤字相当の強調**で表示し、登録可否をユーザーに再確認する。
 
 **例**: 「今日、急な音に驚いてパニックになりました。テレビを消して静かにしたら5分で落ち着きました。」
 → situation: "急な音に驚いてパニック"

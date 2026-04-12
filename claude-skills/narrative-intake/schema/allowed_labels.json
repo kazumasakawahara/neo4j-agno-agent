@@ -1,0 +1,44 @@
+{
+  "_source": "lib/db_new_operations.py::ALLOWED_LABELS (2026-04-12 mirror)",
+  "_note": "このファイルはマスターではない。変更はコード側で行い sync スクリプトで反映すること。",
+  "merge_labels": [
+    "Client",
+    "Supporter",
+    "NgAction",
+    "CarePreference",
+    "Condition",
+    "KeyPerson",
+    "Organization",
+    "ServiceProvider",
+    "Hospital",
+    "Guardian",
+    "Certificate"
+  ],
+  "create_only_labels": [
+    "SupportLog",
+    "LifeHistory",
+    "Wish",
+    "AuditLog",
+    "PublicAssistance",
+    "MeetingRecord"
+  ],
+  "all_allowed": [
+    "Client",
+    "Supporter",
+    "NgAction",
+    "CarePreference",
+    "Condition",
+    "KeyPerson",
+    "Organization",
+    "ServiceProvider",
+    "Hospital",
+    "Guardian",
+    "Certificate",
+    "SupportLog",
+    "LifeHistory",
+    "Wish",
+    "AuditLog",
+    "PublicAssistance",
+    "MeetingRecord"
+  ]
+}
