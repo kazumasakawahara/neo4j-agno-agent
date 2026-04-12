@@ -1,0 +1,29 @@
+{
+  "_source": "docs/NEO4J_SCHEMA_CONVENTION.md (2026-04-12 mirror)",
+  "_note": "列挙値は英語 PascalCase を強制。situation / category のみ日本語許容。",
+  "enums": {
+    "NgAction.riskLevel": ["LifeThreatening", "Panic", "Discomfort"],
+    "SupportLog.effectiveness": ["Effective", "Ineffective", "Neutral", "Unknown"],
+    "SupportLog.type": ["日常記録", "インシデント", "会議", "引き継ぎ"],
+    "CarePreference.priority": ["High", "Medium", "Low"],
+    "Certificate.status": ["Active", "Expired", "Pending"],
+    "Condition.status": ["Active", "Resolved", "Unknown"],
+    "KeyPerson.rank_range": "1..9 (1 = 最優先)"
+  },
+  "japanese_allowed_fields": {
+    "_comment": "これらのフィールドは日本語値を許容する（ユーザー向け表示に直結するため）",
+    "fields": [
+      "SupportLog.situation",
+      "SupportLog.note",
+      "CarePreference.category",
+      "CarePreference.instruction",
+      "NgAction.action",
+      "NgAction.reason",
+      "LifeHistory.era",
+      "LifeHistory.episode",
+      "Wish.content"
+    ]
+  },
+  "property_key_pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+  "property_key_style": "camelCase"
+}

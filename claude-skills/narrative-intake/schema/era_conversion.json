@@ -1,0 +1,63 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-04-12",
+  "_comment": "日本の元号 → 西暦変換表。元号N年 = baseYear + N",
+
+  "eras": [
+    {
+      "name": "明治",
+      "nameAlt": ["明", "M", "Meiji"],
+      "startDate": "1868-01-25",
+      "endDate": "1912-07-30",
+      "baseYear": 1867,
+      "_formula": "西暦 = 1867 + 明治N年"
+    },
+    {
+      "name": "大正",
+      "nameAlt": ["大", "T", "Taisho", "Taishō"],
+      "startDate": "1912-07-30",
+      "endDate": "1926-12-25",
+      "baseYear": 1911,
+      "_formula": "西暦 = 1911 + 大正N年"
+    },
+    {
+      "name": "昭和",
+      "nameAlt": ["昭", "S", "Showa", "Shōwa"],
+      "startDate": "1926-12-25",
+      "endDate": "1989-01-07",
+      "baseYear": 1925,
+      "_formula": "西暦 = 1925 + 昭和N年"
+    },
+    {
+      "name": "平成",
+      "nameAlt": ["平", "H", "Heisei"],
+      "startDate": "1989-01-08",
+      "endDate": "2019-04-30",
+      "baseYear": 1988,
+      "_formula": "西暦 = 1988 + 平成N年"
+    },
+    {
+      "name": "令和",
+      "nameAlt": ["令", "R", "Reiwa"],
+      "startDate": "2019-05-01",
+      "endDate": null,
+      "baseYear": 2018,
+      "_formula": "西暦 = 2018 + 令和N年"
+    }
+  ],
+
+  "parsingRules": {
+    "regex": "(明治|大正|昭和|平成|令和|M|T|S|H|R)\\s*([元0-9０-９]+)\\s*年",
+    "ganOrdinal": "元 は 1 として扱う（例: 平成元年 = 平成1年 = 1989年）",
+    "ambiguityHandling": "M/T/S/H/R の1文字略記は、文脈に日本語の元号文字がない場合のみ適用する",
+    "boundaryDates": "元号切替年（例: 昭和64年/平成元年は同年）は startDate/endDate で判定する"
+  },
+
+  "examples": [
+    {"input": "昭和58年3月15日", "output": "1983-03-15"},
+    {"input": "平成元年", "output": "1989"},
+    {"input": "令和2年4月1日", "output": "2020-04-01"},
+    {"input": "S58.3.15", "output": "1983-03-15"},
+    {"input": "H7年生まれ", "output": "1995年生まれ"}
+  ]
+}
