@@ -1,0 +1,104 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-04-12",
+  "_comment": "日本語ナラティブのチャンキング・正規化・検証に使用するルール集",
+
+  "sentenceEndMarkers": {
+    "_comment": "文末を示す記号。これらの直後は文境界候補",
+    "primary": ["。", "！", "？", "．"],
+    "secondary": ["」", "』", "）", "〕", "】"],
+    "note": "secondary は primary に連接する場合のみ境界として扱う（例: 『〜と言った。』）"
+  },
+
+  "quotationPairs": {
+    "_comment": "開き記号と閉じ記号のペア。ペア内ではチャンク分割禁止",
+    "pairs": [
+      {"open": "「", "close": "」"},
+      {"open": "『", "close": "』"},
+      {"open": "（", "close": "）"},
+      {"open": "〔", "close": "〕"},
+      {"open": "【", "close": "】"},
+      {"open": "\"", "close": "\""},
+      {"open": "'", "close": "'"}
+    ]
+  },
+
+  "forbiddenSplitContexts": {
+    "_comment": "以下の文脈ではチャンク分割禁止",
+    "patterns": [
+      {
+        "name": "insideQuotation",
+        "description": "引用括弧の内部",
+        "detection": "quotationPairs のいずれかのペア内にカーソルがある"
+      },
+      {
+        "name": "renyokeiModifier",
+        "description": "連体修飾句の途中（例: 『〜した母親が〜』の『〜した』と『母親』の間）",
+        "detection": "動詞連体形（タ形/ル形）の直後かつ名詞の直前"
+      },
+      {
+        "name": "rentaishushokuInstrument",
+        "description": "助詞『の』『が』『を』『に』『で』『と』の直後",
+        "detection": "1文字助詞の直後で語境界になっていない位置"
+      },
+      {
+        "name": "compoundNoun",
+        "description": "複合名詞の途中（例: 『障害福祉サービス受給者証』）",
+        "detection": "漢字が連続している位置"
+      },
+      {
+        "name": "dateExpression",
+        "description": "日付・元号表記の途中（例: 『昭和58年3月15日』）",
+        "detection": "元号名・年月日数字列の途中"
+      }
+    ]
+  },
+
+  "normalization": {
+    "_comment": "Phase 1 抽出前の正規化ルール",
+    "unicode": "NFC",
+    "fullWidthToHalfWidth": {
+      "digits": true,
+      "alphabets": true,
+      "symbols": false,
+      "_comment": "記号は全角を維持（日本語文章の慣習）"
+    },
+    "halfWidthToFullWidth": {
+      "kana": true,
+      "_comment": "半角カタカナは全角に統一"
+    },
+    "whitespace": {
+      "normalizeMultipleSpaces": true,
+      "preserveLineBreaks": true
+    }
+  },
+
+  "chunkingHints": {
+    "_comment": "チャンク分割時のサイズ・境界の目安",
+    "preferredCharCount": 2500,
+    "minCharCount": 800,
+    "maxCharCount": 4000,
+    "boundaryPriority": [
+      "LifeStageHeading",
+      "ChapterHeading",
+      "BlankLine",
+      "SentenceEnd",
+      "ClauseEnd"
+    ],
+    "avoidBoundaryWithin": [
+      "quotationPair",
+      "dateExpression",
+      "parentheticalNote"
+    ]
+  },
+
+  "lifeStageHeadings": {
+    "_comment": "LifeStage チャンク境界として検出すべき日本語見出しパターン",
+    "regexPatterns": [
+      "^(胎児期|乳児期|幼児期|学齢期前半|学齢期後半|学童期|青年期|成人期|壮年期|高齢期)",
+      "^第[一二三四五六七八九十0-9０-９]+章",
+      "^(幼少期|小学[生校]時代|中学[生校]時代|高校時代|大学時代|社会人[になってから]?)",
+      "^[0-9０-９]+[歳才]の?[頃ころ]"
+    ]
+  }
+}

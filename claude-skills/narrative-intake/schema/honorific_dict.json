@@ -1,0 +1,65 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-04-12",
+  "_comment": "敬称・呼称・親族呼称の正規化辞書",
+
+  "suffixHonorifics": {
+    "_comment": "人名の後ろに付く敬称。mergeKey 生成時は除去する",
+    "list": ["さん", "様", "さま", "先生", "氏", "ちゃん", "くん", "君", "殿", "殿下", "先輩", "後輩"]
+  },
+
+  "kinshipTerms": {
+    "_comment": "親族呼称の統一名への正規化",
+    "mother": {
+      "canonical": "母",
+      "variants": ["母", "母親", "お母さん", "お母様", "おかあさん", "ママ", "実母", "生母", "母上"]
+    },
+    "father": {
+      "canonical": "父",
+      "variants": ["父", "父親", "お父さん", "お父様", "おとうさん", "パパ", "実父", "生父", "父上"]
+    },
+    "elderBrother": {
+      "canonical": "兄",
+      "variants": ["兄", "兄さん", "お兄さん", "お兄ちゃん", "にいさん", "アニキ"]
+    },
+    "youngerBrother": {
+      "canonical": "弟",
+      "variants": ["弟", "弟さん", "弟くん"]
+    },
+    "elderSister": {
+      "canonical": "姉",
+      "variants": ["姉", "姉さん", "お姉さん", "お姉ちゃん", "ねえさん"]
+    },
+    "youngerSister": {
+      "canonical": "妹",
+      "variants": ["妹", "妹さん", "妹ちゃん"]
+    },
+    "grandmother": {
+      "canonical": "祖母",
+      "variants": ["祖母", "おばあさん", "おばあちゃん", "祖母さん", "大お母さん"]
+    },
+    "grandfather": {
+      "canonical": "祖父",
+      "variants": ["祖父", "おじいさん", "おじいちゃん", "祖父さん", "大お父さん"]
+    },
+    "spouseWife": {
+      "canonical": "妻",
+      "variants": ["妻", "家内", "奥さん", "奥様", "嫁", "連れ合い"]
+    },
+    "spouseHusband": {
+      "canonical": "夫",
+      "variants": ["夫", "主人", "旦那さん", "旦那様", "連れ合い"]
+    }
+  },
+
+  "professionalTitles": {
+    "_comment": "職業的呼称。人名にかかる場合は suffixHonorifics として扱う",
+    "list": ["医師", "看護師", "介護福祉士", "社会福祉士", "精神保健福祉士", "保育士", "栄養士", "薬剤師", "保健師", "相談支援専門員", "サービス管理責任者", "児童発達支援管理責任者"]
+  },
+
+  "normalizationRule": {
+    "kinshipResolution": "親族呼称が Client の家族文脈で現れた場合、canonical 名に統一し、KeyPerson.name として使用する",
+    "suffixStripping": "mergeKey 生成前に suffixHonorifics を末尾から除去する（例: '田中先生' → '田中'）",
+    "contextWarning": "複数の親族が同じ canonical（例: 複数の兄）を持つ場合は Phase 2 で warning を出し、名前等で区別するよう促す"
+  }
+}
