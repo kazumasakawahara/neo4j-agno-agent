@@ -47,6 +47,56 @@ def normalize_text(text: str | None) -> str:
     return text
 
 
+CONDITION_ALIASES: dict[str, list[str]] = {
+    "自閉症スペクトラム障害": [
+        "ASD",
+        "自閉スペクトラム",
+        "自閉スペクトラム症",
+        "自閉症",
+        "アスペルガー症候群",
+        "アスペルガー",
+        "広汎性発達障害",
+        "PDD",
+    ],
+    "注意欠如多動症": ["ADHD", "注意欠陥多動性障害", "ADD", "注意欠如多動性障害"],
+    "知的障害": ["知的発達症", "精神遅滞", "知的発達障害"],
+    "てんかん": ["癲癇", "epilepsy"],
+    "ダウン症候群": ["ダウン症", "21トリソミー", "Down症候群"],
+    "脳性麻痺": ["CP", "脳性まひ"],
+}
+
+# Reverse lookup: alias.lower() → canonical name
+_CONDITION_ALIAS_LOOKUP: dict[str, str] = {
+    alias.lower(): canonical
+    for canonical, aliases in CONDITION_ALIASES.items()
+    for alias in aliases
+}
+# Also map canonical names to themselves (case-insensitive lookup)
+_CONDITION_ALIAS_LOOKUP.update(
+    {canonical.lower(): canonical for canonical in CONDITION_ALIASES}
+)
+
+
+def normalize_condition(name: str | None) -> str:
+    """Normalize a medical condition name to its canonical Japanese term.
+
+    Applies normalize_text() first, then resolves known aliases (case-insensitive)
+    to their canonical names using CONDITION_ALIASES. Unknown names pass through
+    unchanged after text normalization.
+
+    Examples:
+        "ASD"             → "自閉症スペクトラム障害"
+        "asd"             → "自閉症スペクトラム障害"
+        "自閉スペクトラム" → "自閉症スペクトラム障害"
+        "ADHD"            → "注意欠如多動症"
+        "希少疾患X"        → "希少疾患X"
+    """
+    text = normalize_text(name)
+    if not text:
+        return ""
+    return _CONDITION_ALIAS_LOOKUP.get(text.lower(), text)
+
+
 def normalize_name(name: str | None) -> str:
     """Normalize a Japanese personal name for MERGE key consistency.
 
