@@ -12,7 +12,7 @@ from neo4j import GraphDatabase, Driver
 from neo4j.time import Date as Neo4jDate, DateTime as Neo4jDateTime, Time as Neo4jTime, Duration as Neo4jDuration
 
 from app.config import settings
-from app.lib.normalize import normalize_name, normalize_text, normalize_condition
+from app.lib.normalize import normalize_name, normalize_text, normalize_condition, name_to_kana
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ MERGE_KEYS: dict[str, list[str]] = {
     "ServiceProvider": ["name"],
     "Hospital": ["name"],
     "Guardian": ["name"],
-    "Certificate": ["type"],
+    "Certificate": ["type", "grade"],
 }
 
 ALLOWED_CREATE_LABELS: set[str] = {
@@ -185,9 +185,26 @@ def _register_node(
         if label in _NAME_NORMALIZED_LABELS:
             if "name" in props and isinstance(props["name"], str):
                 props["name"] = normalize_name(props["name"])
+            # ServiceProvider: normalize wamnetId when present
+            if label == "ServiceProvider" and props.get("wamnetId"):
+                props["wamnetId"] = normalize_text(str(props["wamnetId"]))
+            # Auto-set kana for Client if not already present
+            if label == "Client" and "kana" not in props:
+                name_val = props.get("name", "")
+                if name_val:
+                    kana = name_to_kana(name_val)
+                    if kana:
+                        props["kana"] = kana
         elif label == "Condition":
             if "name" in props and isinstance(props["name"], str):
                 props["name"] = normalize_condition(props["name"])
+        elif label == "Certificate":
+            # Ensure grade has a value for composite MERGE key
+            for k in MERGE_KEYS[label]:
+                if k in props and isinstance(props[k], str):
+                    props[k] = normalize_text(props[k])
+            if "grade" not in props or not props["grade"]:
+                props["grade"] = "不明"
         else:
             # Generic text normalization for all other merge keys
             for k in MERGE_KEYS[label]:
@@ -196,6 +213,9 @@ def _register_node(
 
     if label in MERGE_KEYS:
         keys = MERGE_KEYS[label]
+        # ServiceProvider: prefer wamnetId over name when available
+        if label == "ServiceProvider" and props.get("wamnetId"):
+            keys = ["wamnetId"]
         # Ensure all merge keys are present
         missing = [k for k in keys if k not in props]
         if missing:

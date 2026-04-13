@@ -5,6 +5,7 @@ creating a circular dependency (dedup.py → db_operations.run_query).
 """
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 
@@ -43,6 +44,35 @@ _CONDITION_ALIAS_LOOKUP: dict[str, str] = {
 _CONDITION_ALIAS_LOOKUP.update(
     {canonical.lower(): canonical for canonical in CONDITION_ALIASES}
 )
+
+
+@functools.lru_cache(maxsize=1)
+def _get_kakasi():
+    """Return a cached pykakasi Kakasi instance (initialized once per process)."""
+    import pykakasi  # noqa: PLC0415 — lazy import to keep startup cost low
+
+    kks = pykakasi.Kakasi()
+    return kks
+
+
+def name_to_kana(name: str | None) -> str:
+    """Convert a Japanese name to hiragana reading using pykakasi.
+
+    Katakana is also converted to hiragana. Alphabetic characters
+    are lowercased. Text is normalize_text()'d first.
+    Returns "" for None/empty.
+
+    Examples:
+        "田中太郎"  → "たなかたろう"
+        "タナカ"    → "たなか"
+        "ＡＢＣ"   → "abc"
+    """
+    text = normalize_text(name)
+    if not text:
+        return ""
+
+    kks = _get_kakasi()
+    return "".join(item["hira"] for item in kks.convert(text))
 
 
 def normalize_text(text: str | None) -> str:
