@@ -455,3 +455,77 @@ class TestRegisterToDatabaseAuditLog:
             if "AuditLog" in str(c)
         ]
         assert len(audit_calls) == 0
+
+
+class TestSourceHashAutoGeneration:
+    def test_supportlog_gets_sourcehash(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "SupportLog", "properties": {"date": "2026-04-14", "note": "テスト"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        create_call = [c for c in calls if "CREATE" in str(c.args[0]) and "SupportLog" in str(c.args[0])][0]
+        props = create_call.args[1]["props"]
+        assert "sourceHash" in props
+        assert len(props["sourceHash"]) == 64  # SHA256 hex
+
+    def test_supportlog_preserves_existing_sourcehash(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "SupportLog", "properties": {"date": "2026-04-14", "sourceHash": "existinghash123"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            register_to_database(graph)
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        create_call = [c for c in calls if "CREATE" in str(c.args[0]) and "SupportLog" in str(c.args[0])][0]
+        assert create_call.args[1]["props"]["sourceHash"] == "existinghash123"
+
+    def test_meetingrecord_gets_sourcehash(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "MeetingRecord", "properties": {"date": "2026-04-14", "title": "面談"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            register_to_database(graph)
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        create_call = [c for c in calls if "CREATE" in str(c.args[0]) and "MeetingRecord" in str(c.args[0])][0]
+        assert "sourceHash" in create_call.args[1]["props"]
+
+    def test_auditlog_does_not_get_sourcehash(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "AuditLog", "properties": {"action": "test", "userName": "user"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            register_to_database(graph)
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        create_call = [c for c in calls if "CREATE" in str(c.args[0]) and "AuditLog" in str(c.args[0])][0]
+        assert "sourceHash" not in create_call.args[1]["props"]
+
+    def test_same_props_produce_same_hash(self):
+        """Deterministic: identical properties → identical sourceHash."""
+        mock_driver1 = _make_mock_driver()
+        mock_driver2 = _make_mock_driver()
+        props = {"date": "2026-04-14", "situation": "パニック", "action": "見守り"}
+        graph = {"nodes": [{"label": "SupportLog", "properties": dict(props)}], "relationships": []}
+
+        hashes = []
+        for md in [mock_driver1, mock_driver2]:
+            with patch("app.lib.db_operations.get_driver", return_value=md):
+                register_to_database({"nodes": [{"label": "SupportLog", "properties": dict(props)}], "relationships": []})
+            session = md.session.return_value.__enter__.return_value
+            call = [c for c in session.run.call_args_list if "CREATE" in str(c.args[0]) and "SupportLog" in str(c.args[0])][0]
+            hashes.append(call.args[1]["props"]["sourceHash"])
+
+        assert hashes[0] == hashes[1]

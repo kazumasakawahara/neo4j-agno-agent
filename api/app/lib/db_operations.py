@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -49,6 +51,12 @@ ALLOWED_CREATE_LABELS: set[str] = {
 }
 
 ALLOWED_LABELS: set[str] = set(MERGE_KEYS.keys()) | ALLOWED_CREATE_LABELS
+
+# CREATE-only labels that should get auto-generated sourceHash for dedup.
+# AuditLog and PublicAssistance are excluded intentionally (audit integrity / admin-only).
+_HASHABLE_CREATE_LABELS: set[str] = {
+    "SupportLog", "MeetingRecord", "LifeHistory", "Wish",
+}
 
 ALLOWED_REL_TYPES: set[str] = {
     "HAS_CONDITION",
@@ -207,6 +215,10 @@ def _register_node(
         session.run(cypher, params)
     else:
         # CREATE-only labels
+        # Auto-generate sourceHash for dedup if not already present
+        if label in _HASHABLE_CREATE_LABELS and "sourceHash" not in props:
+            hash_input = json.dumps(props, sort_keys=True, ensure_ascii=False, default=str)
+            props["sourceHash"] = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
         cypher = f"CREATE (n:{label} $props) RETURN n"
         session.run(cypher, {"props": props})
 
