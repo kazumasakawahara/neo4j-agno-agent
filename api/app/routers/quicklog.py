@@ -1,4 +1,3 @@
-import hashlib
 from datetime import datetime
 
 from fastapi import APIRouter
@@ -11,11 +10,6 @@ router = APIRouter(prefix="/api/quicklog", tags=["quicklog"])
 
 @router.post("", response_model=RegistrationResult)
 async def create_quicklog(request: QuickLogRequest):
-    note_text = request.note or ""
-    date_str = datetime.now().strftime("%Y-%m-%d")
-    hash_input = f"{request.client_name}|{request.supporter_name}|{note_text}|{date_str}"
-    source_hash = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
-
     graph = {
         "nodes": [
             {"temp_id": "c1", "label": "Client", "properties": {"name": request.client_name}},
@@ -24,10 +18,9 @@ async def create_quicklog(request: QuickLogRequest):
                 "temp_id": "log1",
                 "label": "SupportLog",
                 "properties": {
-                    "date": date_str,
+                    "date": datetime.now().strftime("%Y-%m-%d"),
                     "note": request.note,
                     "situation": request.situation or "日常記録",
-                    "sourceHash": source_hash,
                 },
             },
         ],

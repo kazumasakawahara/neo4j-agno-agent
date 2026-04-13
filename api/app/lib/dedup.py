@@ -60,6 +60,12 @@ async def find_semantic_duplicates(
             return []
 
         text_prop = _LABEL_TEXT_PROPERTY.get(label, "text")
+        # Defensive check: text_prop must be a safe identifier (alpha + underscore only)
+        # to prevent Cypher injection via f-string. Values come from _LABEL_TEXT_PROPERTY
+        # which is hardcoded, but we validate anyway for defence-in-depth.
+        if not text_prop.isidentifier():
+            logger.warning("Invalid text_prop %r for label %s", text_prop, label)
+            return []
         cypher = (
             "CALL db.index.vector.queryNodes($index_name, $top_k, $embedding) "
             "YIELD node, score "
