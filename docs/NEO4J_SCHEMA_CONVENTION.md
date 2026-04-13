@@ -423,6 +423,40 @@ POST /api/dedup/check
 }
 ```
 
+### NgAction 確認付きブロッキング
+
+`/api/narratives/register` および `/api/narrative/intake` で NgAction を登録する際、意味的に類似する既存 NgAction（cosine similarity ≥ 0.85）が検出された場合:
+
+- **409 Conflict** を返し、重複候補を `duplicates` フィールドで提示
+- 呼び出し元は候補を確認した上で `confirmDuplicates: true` を付けて再送
+- これにより「大きな音」と「騒音」のような意味的重複がブロックされる（安全に直結する禁忌事項のため）
+- CarePreference は警告のみ（ブロックしない）
+
+### 全書き込みパスの正規化統一
+
+以下の全パスで正規化が適用される:
+
+| パス | 正規化 | sourceHash | セマンティック検出 |
+|------|--------|-----------|------------------|
+| `api/app/lib/db_operations.py` (FastAPI) | ✅ | ✅ | ✅ (NgActionブロッキング) |
+| `lib/db_new_operations.py` (mobile/legacy) | ✅ | ✅ | — |
+| `/api/narrative/intake` (Claude skill) | ✅ | ✅ | ✅ (NgActionブロッキング) |
+
+### 重複検出・マージツール
+
+`scripts/detect_merge_duplicates.py` で既存ノードの重複を検出・マージ:
+
+```bash
+# スキャン（検出のみ）
+uv run python scripts/detect_merge_duplicates.py --scan
+
+# Condition のエイリアス重複をマージ（ドライラン）
+uv run python scripts/detect_merge_duplicates.py --merge --label Condition --dry-run
+
+# 実際にマージ
+uv run python scripts/detect_merge_duplicates.py --merge --label Condition
+```
+
 ### 医学用語エイリアスマッピング
 
 `api/app/lib/normalize.py::CONDITION_ALIASES` に定義。現在のマッピング：
@@ -509,3 +543,4 @@ REMOVE sp.office_name, sp.corp_name, sp.service_type,
 | 2026-04-14 | v2.3 ノード重複防止。テキスト正規化（NFC/全角→半角/敬称除去）、Condition エイリアス解決、sourceHash 自動生成、セマンティック重複検出（NgAction/CarePreference）を追加 |
 | 2026-04-14 | v2.4 Phase 2 重複防止。kana自動生成、Certificate複合MERGEキー、ServiceProvider wamnetId優先MERGE、sourceHashバックフィルスクリプト追加 |
 | 2026-04-14 | v2.5 Phase 3 重複防止。kana ファジーマッチ、登録前重複チェック API (`/api/dedup/check`)、`/api/narratives/register` へのセマンティック重複警告統合 |
+| 2026-04-14 | v2.6 根本的重複防止。全書き込みパス正規化統一、NgAction確認付きブロッキング、重複検出・マージツール |

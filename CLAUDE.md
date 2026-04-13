@@ -241,6 +241,20 @@ Layer 1/2 の Streamlit/Next.js フォームで細切れに入力する代わり
 See `agents/ROUTING.md` for guidance on choosing between skills.
 See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for all LLMs/agents).
 
+### Write Path Deduplication Architecture
+
+All Neo4j write paths apply consistent normalization:
+
+| Path | Module | Normalization |
+|------|--------|---------------|
+| FastAPI (primary) | `api/app/lib/db_operations.py` | Full (normalize + sourceHash + semantic blocking) |
+| Mobile API | `lib/db_new_operations.py` | Full (normalize + sourceHash) |
+| Claude skill | `/api/narrative/intake` | Full (normalize + sourceHash + semantic blocking + safety check) |
+
+**NgAction blocking**: Registration of new NgAction with semantic duplicate (≥0.85 similarity) requires `confirmDuplicates: true`.
+
+**Duplicate maintenance**: `scripts/detect_merge_duplicates.py` scans for and merges existing duplicates.
+
 ### Dynamic LLM Switching
 
 - User says "gemma4を使って" → `model_switch.py` detects → agent recreated with Ollama
