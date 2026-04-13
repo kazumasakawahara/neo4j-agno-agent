@@ -1,5 +1,6 @@
-# NOTE: A copy of this module exists at lib/normalize.py for the legacy lib/ path.
-# Keep both in sync when making changes.
+# NOTE: This is a copy of api/app/lib/normalize.py
+# Keep in sync when making changes to normalization logic.
+# The canonical source is api/app/lib/normalize.py.
 
 """Pure text normalization utilities — no database dependencies.
 
