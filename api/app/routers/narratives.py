@@ -9,12 +9,14 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from app.agents.gemini_agent import extract_from_text, check_safety_compliance
 from app.agents.validator import validate_schema
 from app.lib.db_operations import register_to_database
+from app.lib.dedup import find_semantic_duplicates
 from app.lib.file_readers import read_file
 from app.schemas.narrative import (
     ExtractionRequest,
     ExtractedGraph,
     RegistrationResult,
     SafetyCheckResult,
+    SemanticDuplicateWarning,
     ValidationResult,
 )
 
@@ -24,6 +26,12 @@ router = APIRouter(prefix="/api/narratives", tags=["narratives"])
 
 # サポートするファイル拡張子
 _SUPPORTED_EXTENSIONS = {".docx", ".xlsx", ".pdf", ".txt", ".csv"}
+
+# Semantic dedup config: label → (vector index name, text property)
+_SEMANTIC_CHECK_CONFIG: dict[str, dict[str, str]] = {
+    "NgAction": {"index": "ng_action_embedding", "prop": "action"},
+    "CarePreference": {"index": "care_preference_embedding", "prop": "instruction"},
+}
 
 
 @router.post("/extract")
@@ -64,7 +72,42 @@ async def register(graph: ExtractedGraph):
                 status_code=422,
                 detail=result.get("error", "データベース登録に失敗しました。"),
             )
-        return RegistrationResult(**result)
+
+        # Semantic dedup check — best effort, warnings only, never blocks registration
+        semantic_dups: list[SemanticDuplicateWarning] = []
+        for node in graph.nodes:
+            config = _SEMANTIC_CHECK_CONFIG.get(node.label)
+            if not config:
+                continue
+            text = node.properties.get(config["prop"], "")
+            if not text:
+                continue
+            try:
+                candidates = await find_semantic_duplicates(
+                    text,
+                    label=node.label,
+                    index_name=config["index"],
+                )
+                for candidate in candidates:
+                    semantic_dups.append(
+                        SemanticDuplicateWarning(
+                            new_text=text,
+                            existing_text=candidate.get("text", ""),
+                            similarity_score=candidate.get("score", 0.0),
+                            label=node.label,
+                            node_id=candidate.get("nodeId", ""),
+                        )
+                    )
+            except Exception as dedup_exc:  # noqa: BLE001
+                logger.warning(
+                    "semantic dedup check failed for label=%s: %s",
+                    node.label,
+                    dedup_exc,
+                )
+
+        reg = RegistrationResult(**result)
+        reg.semanticDuplicates = semantic_dups
+        return reg
     except HTTPException:
         raise
     except Exception as exc:
