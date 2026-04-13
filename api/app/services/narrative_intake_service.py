@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.agents.gemini_agent import check_safety_compliance
+from app.lib.dedup import find_semantic_duplicates
 from app.lib.db_operations import (
     ALLOWED_CREATE_LABELS,
     ALLOWED_LABELS,
@@ -38,6 +39,7 @@ from app.schemas.narrative_intake import (
     RejectedNode,
     RejectedRelationship,
     SafetyCheckResultDetail,
+    SemanticDuplicateWarning,
 )
 
 logger = logging.getLogger(__name__)
@@ -47,6 +49,16 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _EMBEDDING_TARGET_LABELS = {"SupportLog", "NgAction", "CarePreference"}
+
+
+# ---------------------------------------------------------------------------
+# Semantic dedup configuration
+# ---------------------------------------------------------------------------
+
+_SEMANTIC_CHECK_CONFIG: dict[str, dict] = {
+    "NgAction": {"index": "ng_action_embedding", "threshold": 0.85},
+    "CarePreference": {"index": "care_preference_embedding", "threshold": 0.85},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +247,61 @@ async def run_safety_check(
 
 
 # ---------------------------------------------------------------------------
+# 2-b. Semantic duplicate detection (NgAction / CarePreference)
+# ---------------------------------------------------------------------------
+
+
+async def check_semantic_duplicates(
+    validated: dict[str, list],
+) -> list[SemanticDuplicateWarning]:
+    """NgAction / CarePreference の意味的重複候補を vector index で検索する。
+
+    ベストエフォート: 失敗しても空リストを返し、通常フローをブロックしない。
+    """
+    warnings: list[SemanticDuplicateWarning] = []
+    for n in validated["nodes"]:
+        config = _SEMANTIC_CHECK_CONFIG.get(n.label)
+        if not config:
+            continue
+
+        # Build search text based on label
+        if n.label == "NgAction":
+            text = str(n.properties.get("action", ""))
+        elif n.label == "CarePreference":
+            text = str(n.properties.get("instruction", ""))
+        else:
+            continue
+
+        if not text.strip():
+            continue
+
+        try:
+            candidates = await find_semantic_duplicates(
+                text,
+                n.label,
+                config["index"],
+                threshold=config["threshold"],
+            )
+        except Exception as exc:
+            logger.warning("Semantic dedup check failed for %s: %s", n.label, exc)
+            continue
+
+        for c in candidates:
+            if c["text"] != text:  # Skip exact matches (handled by MERGE)
+                warnings.append(
+                    SemanticDuplicateWarning(
+                        new_text=text,
+                        existing_text=c["text"],
+                        similarity_score=c["score"],
+                        label=n.label,
+                        node_id=c["nodeId"],
+                    )
+                )
+
+    return warnings
+
+
+# ---------------------------------------------------------------------------
 # 3. Duplicate / idempotency check (sourceHash ベース)
 # ---------------------------------------------------------------------------
 
@@ -396,6 +463,9 @@ async def register_narrative(
     """実書き込み + embedding 付与 + レスポンス生成。"""
     audit = req.auditContext
 
+    # Semantic duplicate check (ベストエフォート、DB書き込み前)
+    semantic_dups = await check_semantic_duplicates(validated)
+
     # sourceHash を付与した dict に変換
     graph_dict = _inject_source_hash(validated, audit.sourceHash)
 
@@ -411,6 +481,7 @@ async def register_narrative(
             safetyCheck=safety,
             duplicateCheck=duplicate,
             warnings=req.warnings,
+            semanticDuplicates=semantic_dups,
         )
 
     if result.get("status") != "success":
@@ -422,6 +493,7 @@ async def register_narrative(
             safetyCheck=safety,
             duplicateCheck=duplicate,
             warnings=req.warnings,
+            semanticDuplicates=semantic_dups,
         )
 
     # Embedding 付与 (ベストエフォート)
@@ -453,6 +525,7 @@ async def register_narrative(
         safetyCheck=safety,
         duplicateCheck=duplicate,
         warnings=req.warnings,
+        semanticDuplicates=semantic_dups,
         message=f"registered {result.get('registered_count', 0)} node(s): {registered_types}",
     )
 

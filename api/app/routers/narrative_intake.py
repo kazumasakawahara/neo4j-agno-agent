@@ -27,6 +27,7 @@ from app.schemas.narrative_intake import (
 from app.services.narrative_intake_service import (
     build_preview_context,
     check_duplicates,
+    check_semantic_duplicates,
     register_narrative,
     run_safety_check,
     validate_graph,
@@ -86,6 +87,7 @@ async def intake_narrative(req: NarrativeIntakeRequest) -> NarrativeIntakeRespon
 
     # 4. dryRun モード: 検証結果のみ返却
     if req.dryRun:
+        semantic_dups = await check_semantic_duplicates(validated)
         return NarrativeIntakeResponse(
             status="dry_run",
             message="dry run — no data was written",
@@ -94,6 +96,7 @@ async def intake_narrative(req: NarrativeIntakeRequest) -> NarrativeIntakeRespon
             safetyCheck=safety,
             duplicateCheck=duplicate,
             warnings=req.warnings,
+            semanticDuplicates=semantic_dups,
         )
 
     # 5. 生命に関わる安全性違反は拒否
