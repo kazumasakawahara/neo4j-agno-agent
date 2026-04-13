@@ -17,6 +17,10 @@ class GraphRelationship(BaseModel):
 class ExtractedGraph(BaseModel):
     nodes: list[GraphNode] = []
     relationships: list[GraphRelationship] = []
+    confirmDuplicates: bool = Field(
+        False,
+        description="True の場合、NgAction のセマンティック重複確認済みとして登録を続行する",
+    )
 
 
 class ExtractionRequest(BaseModel):

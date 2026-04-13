@@ -64,46 +64,38 @@ async def validate(graph: ExtractedGraph):
 
 @router.post("/register", response_model=RegistrationResult)
 async def register(graph: ExtractedGraph):
-    """抽出済みグラフデータを Neo4j に登録する。"""
+    """抽出済みグラフデータを Neo4j に登録する。
+
+    NgAction の意味的重複が検出された場合、409 で候補を返す。
+    confirmDuplicates=true で明示的に確認済みの場合はそのまま登録する。
+    """
     try:
-        result = register_to_database(graph.model_dump())
+        # --- Pre-registration NgAction semantic dedup check (blocking) ---
+        if not graph.confirmDuplicates:
+            blocking_dups = await _check_ngaction_duplicates(graph.nodes)
+            if blocking_dups:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "status": "duplicate_confirmation_required",
+                        "message": (
+                            "意味的に類似するNgActionが既に存在します。"
+                            "確認後、confirmDuplicates=true で再送してください。"
+                        ),
+                        "duplicates": [d.model_dump() for d in blocking_dups],
+                    },
+                )
+
+        # --- Proceed with registration ---
+        result = register_to_database(graph.model_dump(exclude={"confirmDuplicates"}))
         if result.get("status") == "error":
             raise HTTPException(
                 status_code=422,
                 detail=result.get("error", "データベース登録に失敗しました。"),
             )
 
-        # Semantic dedup check — best effort, warnings only, never blocks registration
-        semantic_dups: list[SemanticDuplicateWarning] = []
-        for node in graph.nodes:
-            config = _SEMANTIC_CHECK_CONFIG.get(node.label)
-            if not config:
-                continue
-            text = node.properties.get(config["prop"], "")
-            if not text:
-                continue
-            try:
-                candidates = await find_semantic_duplicates(
-                    text,
-                    label=node.label,
-                    index_name=config["index"],
-                )
-                for candidate in candidates:
-                    semantic_dups.append(
-                        SemanticDuplicateWarning(
-                            new_text=text,
-                            existing_text=candidate.get("text", ""),
-                            similarity_score=candidate.get("score", 0.0),
-                            label=node.label,
-                            node_id=candidate.get("nodeId", ""),
-                        )
-                    )
-            except Exception as dedup_exc:  # noqa: BLE001
-                logger.warning(
-                    "semantic dedup check failed for label=%s: %s",
-                    node.label,
-                    dedup_exc,
-                )
+        # Non-blocking semantic dedup for CarePreference (and NgAction warnings if confirmed)
+        semantic_dups = await _collect_semantic_warnings(graph.nodes)
 
         reg = RegistrationResult(**result)
         reg.semanticDuplicates = semantic_dups
@@ -113,6 +105,77 @@ async def register(graph: ExtractedGraph):
     except Exception as exc:
         logger.error("register failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+async def _check_ngaction_duplicates(nodes) -> list[SemanticDuplicateWarning]:
+    """NgAction ノードのセマンティック重複候補を返す（ブロッキング用）。
+
+    完全一致テキストはMERGEで処理されるためスキップする。
+    """
+    dups: list[SemanticDuplicateWarning] = []
+    for node in nodes:
+        if node.label != "NgAction":
+            continue
+        text = node.properties.get("action", "")
+        if not text:
+            continue
+        try:
+            candidates = await find_semantic_duplicates(
+                text,
+                label="NgAction",
+                index_name="ng_action_embedding",
+            )
+            for c in candidates:
+                # Skip exact text match — MERGE handles deduplication
+                if c.get("text") == text:
+                    continue
+                dups.append(
+                    SemanticDuplicateWarning(
+                        new_text=text,
+                        existing_text=c.get("text", ""),
+                        similarity_score=c.get("score", 0.0),
+                        label="NgAction",
+                        node_id=c.get("nodeId", ""),
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("NgAction dedup check failed: %s", exc)
+    return dups
+
+
+async def _collect_semantic_warnings(nodes) -> list[SemanticDuplicateWarning]:
+    """CarePreference などの非ブロッキングセマンティック警告を収集する。"""
+    warnings: list[SemanticDuplicateWarning] = []
+    for node in nodes:
+        config = _SEMANTIC_CHECK_CONFIG.get(node.label)
+        if not config:
+            continue
+        text = node.properties.get(config["prop"], "")
+        if not text:
+            continue
+        try:
+            candidates = await find_semantic_duplicates(
+                text,
+                label=node.label,
+                index_name=config["index"],
+            )
+            for c in candidates:
+                warnings.append(
+                    SemanticDuplicateWarning(
+                        new_text=text,
+                        existing_text=c.get("text", ""),
+                        similarity_score=c.get("score", 0.0),
+                        label=node.label,
+                        node_id=c.get("nodeId", ""),
+                    )
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "semantic dedup failed for label=%s: %s",
+                node.label,
+                exc,
+            )
+    return warnings
 
 
 @router.post("/upload")
