@@ -252,7 +252,7 @@ See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for
 ### Node Types
 
 **Core Entities**:
-- `:Client`: Central node (name, dob, bloodType, summaryEmbedding[768])
+- `:Client`: Central node (name, dob, bloodType, summaryEmbedding[768]). `kana` property auto-generated via `name_to_kana()` (pykakasi) on registration if not set
 - `:NgAction`: Prohibited actions with risk levels (safety-critical, embedding[768])
 - `:CarePreference`: Recommended care instructions (embedding[768])
 - `:Condition`: Medical diagnoses/characteristics
@@ -266,7 +266,7 @@ See `docs/NEO4J_SCHEMA_CONVENTION.md` for Neo4j naming conventions (required for
 - `:MeetingRecord`: 面談音声記録 (date, title, duration, filePath, mimeType, transcript, note, embedding[768], textEmbedding[768])
 
 **Legal Documentation**:
-- `:Certificate`: 手帳・受給者証 with `nextRenewalDate`
+- `:Certificate`: 手帳・受給者証 with `nextRenewalDate`. MERGE key: `["type", "grade"]` (e.g., 療育手帳 A and 療育手帳 B are separate nodes; `grade` defaults to `"不明"` if unspecified)
 - `:PublicAssistance`: 公的扶助
 
 **Financial Safety** (livelihood-support, port 7688):
@@ -368,6 +368,8 @@ neo4j-agno-agent/
 - **Date validation**: Use `lib/utils.py::safe_date_parse()` for all date inputs
 - **Session state**: Streamlit apps must call `lib/utils.py::init_session_state()` on startup
 - **Client uniqueness**: `Client.name` に UNIQUE 制約あり。name+dob の複合一意性は `lib/db_operations.py::validate_client_uniqueness()` で検証
+- **Certificate MERGE key**: `["type", "grade"]` で MERGE（同種別・異等級は別ノード。`grade` 未指定時は `"不明"` をデフォルト使用）
+- **ServiceProvider MERGE**: `wamnetId` が存在する場合は `wamnetId` で MERGE（名前の表記揺れに強い）。存在しない場合は `name` でフォールバック
 
 ### Neo4j Query Patterns
 
