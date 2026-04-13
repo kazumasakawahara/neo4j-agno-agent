@@ -81,6 +81,10 @@ class NarrativeIntakeRequest(BaseModel):
         False,
         description="True の場合、DBに書き込まず検証結果のみ返す",
     )
+    confirmDuplicates: bool = Field(
+        False,
+        description="True の場合、セマンティック重複の確認済みとして登録を強行する",
+    )
 
 
 # ---------------------------------------------------------------------------
