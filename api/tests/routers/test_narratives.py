@@ -3,6 +3,7 @@
 Mocks Gemini extraction and Neo4j operations.
 """
 
+import json
 from unittest.mock import patch, AsyncMock, MagicMock
 
 
@@ -456,6 +457,126 @@ class TestRegisterNgActionBlocking:
                 "relationships": [],
             })
         assert response.status_code == 200
+
+
+class TestExtractStream:
+    """POST /api/narratives/extract-stream"""
+
+    def test_extract_stream_returns_sse(self, client, mock_db):
+        mock_result = {
+            "nodes": [{"label": "Client", "properties": {"name": "テスト"}}],
+            "relationships": [],
+        }
+        with patch("app.routers.narratives.extract_from_text", new_callable=AsyncMock, return_value=mock_result), \
+             patch("app.routers.narratives.validate_schema", return_value={"is_valid": True}), \
+             patch("app.routers.narratives.find_semantic_duplicates", new_callable=AsyncMock, return_value=[]):
+            response = client.post(
+                "/api/narratives/extract-stream",
+                json={"text": "テストテキスト", "client_name": None},
+            )
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        body = response.text
+        assert "stage" in body
+        assert "started" in body
+        assert "complete" in body
+
+    def test_extract_stream_handles_extraction_failure(self, client, mock_db):
+        with patch("app.routers.narratives.extract_from_text", new_callable=AsyncMock, return_value=None):
+            response = client.post(
+                "/api/narratives/extract-stream",
+                json={"text": "テスト", "client_name": None},
+            )
+        assert response.status_code == 200  # SSE always returns 200
+        body = response.text
+        assert "error" in body
+
+    def test_extract_stream_handles_extraction_exception(self, client, mock_db):
+        with patch("app.routers.narratives.extract_from_text", new_callable=AsyncMock, side_effect=RuntimeError("Gemini down")):
+            response = client.post(
+                "/api/narratives/extract-stream",
+                json={"text": "テスト", "client_name": None},
+            )
+        assert response.status_code == 200
+        body = response.text
+        assert "error" in body
+        assert "抽出失敗" in body
+
+    def test_extract_stream_progress_stages_in_order(self, client, mock_db):
+        mock_result = {
+            "nodes": [
+                {"label": "Client", "properties": {"name": "田中"}},
+                {"label": "NgAction", "properties": {"action": "大声"}},
+            ],
+            "relationships": [],
+        }
+        with patch("app.routers.narratives.extract_from_text", new_callable=AsyncMock, return_value=mock_result), \
+             patch("app.routers.narratives.validate_schema", return_value={"is_valid": True}), \
+             patch("app.routers.narratives.find_semantic_duplicates", new_callable=AsyncMock, return_value=[]):
+            response = client.post(
+                "/api/narratives/extract-stream",
+                json={"text": "田中さんは大声が禁忌です", "client_name": "田中"},
+            )
+        assert response.status_code == 200
+        body = response.text
+        # Verify all expected stages are present
+        for stage in ("started", "chunking", "extracting", "validating", "dedup_check", "complete"):
+            assert stage in body, f"Stage '{stage}' not found in SSE body"
+
+    def test_extract_stream_complete_event_includes_graph(self, client, mock_db):
+        mock_result = {
+            "nodes": [{"label": "Client", "properties": {"name": "花子"}}],
+            "relationships": [],
+        }
+        with patch("app.routers.narratives.extract_from_text", new_callable=AsyncMock, return_value=mock_result), \
+             patch("app.routers.narratives.validate_schema", return_value={"is_valid": True}), \
+             patch("app.routers.narratives.find_semantic_duplicates", new_callable=AsyncMock, return_value=[]):
+            response = client.post(
+                "/api/narratives/extract-stream",
+                json={"text": "花子さんの支援記録", "client_name": None},
+            )
+        assert response.status_code == 200
+        # The complete event must contain graph data
+        lines = [line for line in response.text.split("\n") if line.startswith("data:")]
+        complete_event = None
+        for line in lines:
+            payload = json.loads(line[len("data:"):].strip())
+            if payload.get("stage") == "complete":
+                complete_event = payload
+                break
+        assert complete_event is not None
+        assert "data" in complete_event
+        assert "graph" in complete_event["data"]
+        assert complete_event["progress"] == 100
+
+    def test_extract_stream_includes_semantic_warnings(self, client, mock_db):
+        mock_result = {
+            "nodes": [
+                {"label": "NgAction", "properties": {"action": "騒音"}},
+            ],
+            "relationships": [],
+        }
+        mock_candidates = [{"text": "大きな音", "score": 0.91, "nodeId": "4:abc:1"}]
+        with patch("app.routers.narratives.extract_from_text", new_callable=AsyncMock, return_value=mock_result), \
+             patch("app.routers.narratives.validate_schema", return_value={"is_valid": True}), \
+             patch("app.routers.narratives.find_semantic_duplicates", new_callable=AsyncMock, return_value=mock_candidates):
+            response = client.post(
+                "/api/narratives/extract-stream",
+                json={"text": "騒音が禁忌", "client_name": None},
+            )
+        assert response.status_code == 200
+        lines = [line for line in response.text.split("\n") if line.startswith("data:")]
+        complete_event = None
+        for line in lines:
+            payload = json.loads(line[len("data:"):].strip())
+            if payload.get("stage") == "complete":
+                complete_event = payload
+                break
+        assert complete_event is not None
+        warnings = complete_event["data"]["semanticWarnings"]
+        assert len(warnings) == 1
+        assert warnings[0]["new_text"] == "騒音"
+        assert warnings[0]["existing_text"] == "大きな音"
 
 
 class TestSafetyCheck:

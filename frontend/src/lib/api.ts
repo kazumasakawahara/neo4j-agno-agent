@@ -42,6 +42,41 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ text, client_name: clientName }),
       }),
+    extractStream: (
+      text: string,
+      clientName: string | undefined,
+      onEvent: (event: { stage: string; progress: number; message: string; data?: Record<string, unknown> }) => void
+    ) => {
+      return fetch(`${API_BASE}/api/narratives/extract-stream`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, client_name: clientName || null }),
+      }).then(async (res) => {
+        if (!res.ok || !res.body) throw new Error(`SSE failed: ${res.status}`);
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          // SSE events are separated by double newlines
+          while ((idx = buffer.indexOf("\n\n")) !== -1) {
+            const raw = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 2);
+            if (raw.startsWith("data: ")) {
+              try {
+                const payload = JSON.parse(raw.slice(6));
+                onEvent(payload);
+              } catch (e) {
+                console.error("SSE parse error", e);
+              }
+            }
+          }
+        }
+      });
+    },
     upload: async (file: File): Promise<{ filename: string; text: string }> => {
       const formData = new FormData();
       formData.append("file", file);
@@ -90,5 +125,27 @@ export const api = {
       fetchApi<import("./types").EcomapData>(
         `/api/ecomap/${encodeURIComponent(name)}?template=${template || "full_view"}`
       ),
+  },
+  graph: {
+    explore: (params?: {
+      startLabel?: string;
+      startName?: string;
+      maxDepth?: number;
+      maxNodes?: number;
+    }) => {
+      const sp = new URLSearchParams();
+      if (params?.startLabel) sp.set("startLabel", params.startLabel);
+      if (params?.startName) sp.set("startName", params.startName);
+      if (params?.maxDepth) sp.set("maxDepth", String(params.maxDepth));
+      if (params?.maxNodes) sp.set("maxNodes", String(params.maxNodes));
+      const qs = sp.toString();
+      return fetchApi<{
+        nodes: Array<{ id: string; label: string; name: string; properties: Record<string, unknown> }>;
+        edges: Array<{ id: string; source: string; target: string; type: string; properties: Record<string, unknown> }>;
+        truncated: boolean;
+      }>(`/api/graph/explore${qs ? `?${qs}` : ""}`);
+    },
+    labels: () => fetchApi<{ labels: Array<{ label: string; count: number }> }>("/api/graph/labels"),
+    stats: () => fetchApi<{ total_nodes: number; total_edges: number }>("/api/graph/stats"),
   },
 };

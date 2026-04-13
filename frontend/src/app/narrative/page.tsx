@@ -5,8 +5,35 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import { api } from "@/lib/api";
 import type { ExtractedGraph } from "@/lib/types";
+
+interface SemanticWarning {
+  label: string;
+  new_text: string;
+  existing_text: string;
+  similarity_score: number;
+}
+
+interface NarrativeRegisterResult {
+  status: string;
+  registered_count?: number;
+  message?: string;
+}
+
+function _stageLabel(stage: string): string {
+  const labels: Record<string, string> = {
+    started: "準備中",
+    chunking: "テキスト解析",
+    extracting: "AI抽出",
+    validating: "構造検証",
+    dedup_check: "重複チェック",
+    complete: "完了",
+    error: "エラー",
+  };
+  return labels[stage] || stage;
+}
 
 const ACCEPTED_EXTENSIONS = ".docx,.xlsx,.pdf,.txt";
 
@@ -17,6 +44,12 @@ export default function NarrativePage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{
+    stage: string;
+    progress: number;
+    message: string;
+  } | null>(null);
+  const [semanticWarnings, setSemanticWarnings] = useState<SemanticWarning[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -37,12 +70,24 @@ export default function NarrativePage() {
 
   const handleExtract = async () => {
     setLoading(true);
+    setProgress({ stage: "started", progress: 0, message: "開始..." });
+    setSemanticWarnings([]);
     try {
-      const data = (await api.narratives.extract(text)) as ExtractedGraph | null;
-      if (data) {
-        setExtractedData(data);
-        setStep(2);
-      }
+      await api.narratives.extractStream(text, undefined, (event) => {
+        setProgress(event);
+        if (event.stage === "complete" && event.data?.graph) {
+          setExtractedData(event.data.graph as ExtractedGraph);
+          setSemanticWarnings(
+            (event.data.semanticWarnings as SemanticWarning[] | undefined) || []
+          );
+          setStep(2);
+        }
+        if (event.stage === "error") {
+          setResult(`抽出エラー: ${event.message}`);
+        }
+      });
+    } catch (err) {
+      setResult(`ストリーミングエラー: ${err}`);
     } finally {
       setLoading(false);
     }
@@ -52,7 +97,7 @@ export default function NarrativePage() {
     if (!extractedData) return;
     setLoading(true);
     try {
-      const res = (await api.narratives.register(extractedData)) as any;
+      const res = (await api.narratives.register(extractedData)) as NarrativeRegisterResult;
       setResult(
         res.status === "success"
           ? `登録完了: ${res.registered_count}件のノードを登録しました。`
@@ -147,12 +192,23 @@ export default function NarrativePage() {
 
             <Separator />
 
+            {loading && progress && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="font-medium">{_stageLabel(progress.stage)}</span>
+                  <span className="text-muted-foreground">{progress.progress}%</span>
+                </div>
+                <Progress value={progress.progress} />
+                <p className="text-xs text-muted-foreground">{progress.message}</p>
+              </div>
+            )}
+
             <Button
               onClick={handleExtract}
               disabled={!text.trim() || loading}
               className="w-full"
             >
-              {loading ? "抽出中..." : "AI抽出を実行"}
+              {loading ? "処理中..." : "AI抽出を実行"}
             </Button>
           </CardContent>
         </Card>
@@ -195,6 +251,22 @@ export default function NarrativePage() {
                 </div>
               ))}
             </div>
+            {semanticWarnings.length > 0 && (
+              <div className="border border-amber-500 rounded p-3 bg-amber-50">
+                <p className="text-sm font-medium text-amber-900 mb-2">
+                  ⚠ 類似する既存ノードが {semanticWarnings.length} 件見つかりました
+                </p>
+                <ul className="text-xs space-y-1">
+                  {semanticWarnings.slice(0, 5).map((w, i) => (
+                    <li key={i} className="text-amber-800">
+                      [{w.label}] {w.new_text} ≈ {w.existing_text}
+                      ({(w.similarity_score * 100).toFixed(1)}%)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(1)}>
                 戻る
