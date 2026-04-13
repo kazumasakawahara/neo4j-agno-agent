@@ -38,7 +38,7 @@ MERGE_KEYS: dict[str, list[str]] = {
     "ServiceProvider": ["name"],
     "Hospital": ["name"],
     "Guardian": ["name"],
-    "Certificate": ["type"],
+    "Certificate": ["type", "grade"],
 }
 
 ALLOWED_CREATE_LABELS: set[str] = {
@@ -195,6 +195,13 @@ def _register_node(
         elif label == "Condition":
             if "name" in props and isinstance(props["name"], str):
                 props["name"] = normalize_condition(props["name"])
+        elif label == "Certificate":
+            # Ensure grade has a value for composite MERGE key
+            for k in MERGE_KEYS[label]:
+                if k in props and isinstance(props[k], str):
+                    props[k] = normalize_text(props[k])
+            if "grade" not in props or not props["grade"]:
+                props["grade"] = "不明"
         else:
             # Generic text normalization for all other merge keys
             for k in MERGE_KEYS[label]:

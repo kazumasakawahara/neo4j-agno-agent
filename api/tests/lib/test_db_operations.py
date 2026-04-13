@@ -100,8 +100,8 @@ class TestMergeKeys:
     def test_ng_action_merges_on_action(self):
         assert MERGE_KEYS["NgAction"] == ["action"]
 
-    def test_certificate_merges_on_type(self):
-        assert MERGE_KEYS["Certificate"] == ["type"]
+    def test_certificate_merges_on_type_and_grade(self):
+        assert MERGE_KEYS["Certificate"] == ["type", "grade"]
 
 
 # ---------------------------------------------------------------------------
@@ -579,3 +579,53 @@ class TestClientKanaAutoGeneration:
         merge_call = [c for c in calls if "Supporter" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
         extra_props = merge_call.args[1]["extra_props"]
         assert "kana" not in extra_props
+
+
+# ---------------------------------------------------------------------------
+# Certificate composite MERGE key [type, grade]
+# ---------------------------------------------------------------------------
+
+class TestCertificateCompositeMerge:
+    def test_certificate_merges_on_type_and_grade(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Certificate", "properties": {"type": "療育手帳", "grade": "A"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "Certificate" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        params = merge_call.args[1]
+        assert params["type"] == "療育手帳"
+        assert params["grade"] == "A"
+
+    def test_certificate_defaults_grade_when_missing(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Certificate", "properties": {"type": "身体障害者手帳"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "Certificate" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        params = merge_call.args[1]
+        assert params["grade"] == "不明"
+
+    def test_certificate_normalizes_type_text(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Certificate", "properties": {"type": "  療育手帳  ", "grade": "B"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            register_to_database(graph)
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "Certificate" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        assert merge_call.args[1]["type"] == "療育手帳"
