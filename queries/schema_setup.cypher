@@ -29,6 +29,14 @@ CREATE INDEX support_log_effectiveness_idx IF NOT EXISTS FOR (log:SupportLog) ON
 CREATE CONSTRAINT client_name_unique IF NOT EXISTS
 FOR (c:Client) REQUIRE c.name IS UNIQUE;
 
+// ━━━ ノード重複防止インデックス（Dedup） ━━━
+
+// sourceHash による冪等性チェック
+CREATE INDEX supportlog_sourcehash_idx IF NOT EXISTS FOR (log:SupportLog) ON (log.sourceHash);
+CREATE INDEX meetingrecord_sourcehash_idx IF NOT EXISTS FOR (mr:MeetingRecord) ON (mr.sourceHash);
+CREATE INDEX lifehistory_sourcehash_idx IF NOT EXISTS FOR (lh:LifeHistory) ON (lh.sourceHash);
+CREATE INDEX wish_sourcehash_idx IF NOT EXISTS FOR (w:Wish) ON (w.sourceHash);
+
 // ━━━ テストデータの投入（開発用） ━━━
 
 // サンプル SupportLog ノード（既存データがない場合のみ）

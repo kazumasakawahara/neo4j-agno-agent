@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -10,12 +12,20 @@ from neo4j import GraphDatabase, Driver
 from neo4j.time import Date as Neo4jDate, DateTime as Neo4jDateTime, Time as Neo4jTime, Duration as Neo4jDuration
 
 from app.config import settings
+from app.lib.normalize import normalize_name, normalize_text, normalize_condition
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
+# Labels whose "name" merge key should be normalized with normalize_name()
+# (strips whitespace, fullwidth chars, and Japanese honorific suffixes).
+_NAME_NORMALIZED_LABELS: set[str] = {
+    "Client", "Supporter", "KeyPerson", "Guardian",
+    "Hospital", "Organization", "ServiceProvider",
+}
 
 MERGE_KEYS: dict[str, list[str]] = {
     "Client": ["name"],
@@ -41,6 +51,12 @@ ALLOWED_CREATE_LABELS: set[str] = {
 }
 
 ALLOWED_LABELS: set[str] = set(MERGE_KEYS.keys()) | ALLOWED_CREATE_LABELS
+
+# CREATE-only labels that should get auto-generated sourceHash for dedup.
+# AuditLog and PublicAssistance are excluded intentionally (audit integrity / admin-only).
+_HASHABLE_CREATE_LABELS: set[str] = {
+    "SupportLog", "MeetingRecord", "LifeHistory", "Wish",
+}
 
 ALLOWED_REL_TYPES: set[str] = {
     "HAS_CONDITION",
@@ -164,6 +180,20 @@ def _register_node(
 
     props = {k: v for k, v in properties.items() if v is not None}
 
+    # Normalize merge key values for consistent MERGE matching
+    if label in MERGE_KEYS:
+        if label in _NAME_NORMALIZED_LABELS:
+            if "name" in props and isinstance(props["name"], str):
+                props["name"] = normalize_name(props["name"])
+        elif label == "Condition":
+            if "name" in props and isinstance(props["name"], str):
+                props["name"] = normalize_condition(props["name"])
+        else:
+            # Generic text normalization for all other merge keys
+            for k in MERGE_KEYS[label]:
+                if k in props and isinstance(props[k], str):
+                    props[k] = normalize_text(props[k])
+
     if label in MERGE_KEYS:
         keys = MERGE_KEYS[label]
         # Ensure all merge keys are present
@@ -185,6 +215,10 @@ def _register_node(
         session.run(cypher, params)
     else:
         # CREATE-only labels
+        # Auto-generate sourceHash for dedup if not already present
+        if label in _HASHABLE_CREATE_LABELS and "sourceHash" not in props:
+            hash_input = json.dumps(props, sort_keys=True, ensure_ascii=False, default=str)
+            props["sourceHash"] = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
         cypher = f"CREATE (n:{label} $props) RETURN n"
         session.run(cypher, {"props": props})
 
@@ -272,9 +306,9 @@ def register_to_database(
                 label = node.get("label", "")
                 properties = node.get("properties", {}) or {}
 
-                # Extract client name for the response
+                # Extract client name for the response (normalized)
                 if label == "Client" and "name" in properties:
-                    client_name = properties["name"]
+                    client_name = normalize_name(properties.get("name", ""))
 
                 if _register_node(session, label, properties):
                     registered_count += 1

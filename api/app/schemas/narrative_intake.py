@@ -123,6 +123,16 @@ class DuplicateCheckResult(BaseModel):
     existing_nodes: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class SemanticDuplicateWarning(BaseModel):
+    """Warning about a semantically similar existing node."""
+
+    new_text: str
+    existing_text: str
+    similarity_score: float
+    label: str
+    node_id: str
+
+
 class NarrativeIntakeResponse(BaseModel):
     """/api/narrative/intake のレスポンス本体。"""
 
@@ -144,6 +154,7 @@ class NarrativeIntakeResponse(BaseModel):
         default_factory=DuplicateCheckResult,
     )
     warnings: list[str] = Field(default_factory=list)
+    semanticDuplicates: list[SemanticDuplicateWarning] = Field(default_factory=list)
     message: str | None = None
 
 
