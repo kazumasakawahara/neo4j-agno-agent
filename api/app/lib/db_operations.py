@@ -185,6 +185,9 @@ def _register_node(
         if label in _NAME_NORMALIZED_LABELS:
             if "name" in props and isinstance(props["name"], str):
                 props["name"] = normalize_name(props["name"])
+            # ServiceProvider: normalize wamnetId when present
+            if label == "ServiceProvider" and props.get("wamnetId"):
+                props["wamnetId"] = normalize_text(str(props["wamnetId"]))
             # Auto-set kana for Client if not already present
             if label == "Client" and "kana" not in props:
                 name_val = props.get("name", "")
@@ -210,6 +213,9 @@ def _register_node(
 
     if label in MERGE_KEYS:
         keys = MERGE_KEYS[label]
+        # ServiceProvider: prefer wamnetId over name when available
+        if label == "ServiceProvider" and props.get("wamnetId"):
+            keys = ["wamnetId"]
         # Ensure all merge keys are present
         missing = [k for k in keys if k not in props]
         if missing:

@@ -277,6 +277,65 @@ class TestRegisterToDatabaseValidation:
         assert result["status"] == "error"
         assert "Connection refused" in result.get("error", "")
 
+
+# ---------------------------------------------------------------------------
+# ServiceProvider wamnetId-first MERGE strategy
+# ---------------------------------------------------------------------------
+
+class TestServiceProviderWamnetIdMerge:
+    def test_with_wamnetid_merges_by_wamnetid(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "ServiceProvider", "properties": {
+                "name": "テスト事業所",
+                "wamnetId": "1234567890",
+            }}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "ServiceProvider" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        cypher = merge_call.args[0]
+        # MERGE should use wamnetId, not name
+        assert "wamnetId" in cypher
+        assert merge_call.args[1]["wamnetId"] == "1234567890"
+        # name should be in extra_props, not merge props
+        assert "name" in merge_call.args[1]["extra_props"]
+
+    def test_without_wamnetid_falls_back_to_name(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "ServiceProvider", "properties": {"name": "テスト事業所"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "ServiceProvider" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        cypher = merge_call.args[0]
+        assert "name" in cypher
+        assert merge_call.args[1]["name"] == "テスト事業所"
+
+    def test_wamnetid_is_normalized(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "ServiceProvider", "properties": {
+                "name": "テスト", "wamnetId": "  １２３４  ",
+            }}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            register_to_database(graph)
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "ServiceProvider" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        assert merge_call.args[1]["wamnetId"] == "1234"
+
     def test_create_only_label_registered(self):
         mock_driver = _make_mock_driver()
         graph = {
