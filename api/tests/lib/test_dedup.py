@@ -1,6 +1,7 @@
 """Tests for dedup.py text normalization functions."""
 import unicodedata
 import pytest
+from unittest.mock import patch
 from app.lib.dedup import normalize_text, normalize_name
 
 
@@ -215,4 +216,101 @@ class TestFindSemanticDuplicates:
                 label="NgAction",
                 index_name="ng_action_embedding",
             )
+        assert result == []
+
+
+class TestFindSimilarByKana:
+    def test_finds_exact_kana_match(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        # DB row already has kana stored; input converts to same kana via name_to_kana()
+        # "田中太郎" → "たなかたろう" (pykakasi)
+        mock_rows = [
+            {"name": "田中太郎", "kana": "たなかたろう", "nodeId": "4:abc:1"},
+        ]
+        with patch("app.lib.dedup.run_query", return_value=mock_rows):
+            result = find_similar_by_kana("田中太郎")  # exact same name → exact kana match
+        assert len(result) == 1
+        assert result[0]["name"] == "田中太郎"
+        assert result[0]["similarity"] == 1.0
+        assert result[0]["matchType"] == "kana"
+
+    def test_finds_similar_kana(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        mock_rows = [
+            {"name": "田中太郎", "kana": "たなかたろう", "nodeId": "4:abc:1"},
+            {"name": "佐藤花子", "kana": "さとうはなこ", "nodeId": "4:abc:2"},
+        ]
+        with patch("app.lib.dedup.run_query", return_value=mock_rows):
+            result = find_similar_by_kana("田中次郎")  # たなかじろう - similar
+        # 田中太郎 should be found (たなかたろう vs たなかじろう = high similarity)
+        assert len(result) >= 1
+        assert result[0]["name"] == "田中太郎"
+
+    def test_returns_empty_for_no_match(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        mock_rows = [
+            {"name": "佐藤花子", "kana": "さとうはなこ", "nodeId": "4:abc:1"},
+        ]
+        with patch("app.lib.dedup.run_query", return_value=mock_rows):
+            result = find_similar_by_kana("山田健太", threshold=0.9)
+        assert result == []
+
+    def test_returns_empty_for_empty_input(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        result = find_similar_by_kana("")
+        assert result == []
+        result = find_similar_by_kana(None)
+        assert result == []
+
+    def test_handles_db_error_gracefully(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        with patch("app.lib.dedup.run_query", side_effect=Exception("DB error")):
+            result = find_similar_by_kana("田中太郎")
+        assert result == []
+
+    def test_respects_limit(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        mock_rows = [
+            {"name": f"田中{i}郎", "kana": f"たなか{chr(0x305F + i)}ろう", "nodeId": f"4:abc:{i}"}
+            for i in range(10)
+        ]
+        with patch("app.lib.dedup.run_query", return_value=mock_rows):
+            result = find_similar_by_kana("田中太郎", limit=3)
+        assert len(result) <= 3
+
+    def test_sorted_by_similarity_descending(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        mock_rows = [
+            {"name": "田中太郎", "kana": "たなかたろう", "nodeId": "4:abc:1"},
+            {"name": "田中次郎", "kana": "たなかじろう", "nodeId": "4:abc:2"},
+        ]
+        with patch("app.lib.dedup.run_query", return_value=mock_rows):
+            result = find_similar_by_kana("田中太郎")
+        if len(result) >= 2:
+            assert result[0]["similarity"] >= result[1]["similarity"]
+
+    def test_rejects_invalid_label(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        with patch("app.lib.dedup.run_query") as mock_query:
+            result = find_similar_by_kana("田中太郎", label="Client; DROP TABLE")
+        assert result == []
+        mock_query.assert_not_called()
+
+    def test_skips_rows_with_no_kana(self):
+        from app.lib.dedup import find_similar_by_kana
+
+        mock_rows = [
+            {"name": "田中太郎", "kana": None, "nodeId": "4:abc:1"},
+            {"name": "佐藤花子", "kana": "", "nodeId": "4:abc:2"},
+        ]
+        with patch("app.lib.dedup.run_query", return_value=mock_rows):
+            result = find_similar_by_kana("田中太郎")
         assert result == []

@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GraphNode(BaseModel):
@@ -37,12 +37,23 @@ class SafetyCheckResult(BaseModel):
     risk_level: str = "None"
 
 
+class SemanticDuplicateWarning(BaseModel):
+    """Warning about a semantically similar existing node."""
+
+    new_text: str
+    existing_text: str
+    similarity_score: float
+    label: str
+    node_id: str
+
+
 class RegistrationResult(BaseModel):
     status: str
     client_name: str | None = None
     registered_count: int = 0
     registered_types: list[str] = []
     message: str | None = None
+    semanticDuplicates: list[SemanticDuplicateWarning] = Field(default_factory=list)
 
 
 class QuickLogRequest(BaseModel):

@@ -394,6 +394,35 @@ ServiceProvider の MERGE 戦略を改善:
 
 narrative-intake エンドポイントの dryRun モードおよび本登録時に自動チェックされ、`semanticDuplicates` フィールドで警告を返す。MERGE の完全一致とは異なり、「大きな音」と「騒音」のような表記揺れを検出できる。
 
+### 読み仮名（kana）ファジーマッチ
+
+`api/app/lib/dedup.py::find_similar_by_kana()` が Client/KeyPerson/Supporter/Guardian の kana プロパティを `SequenceMatcher` で比較し、読み仮名が類似する既存ノードを検出する。
+
+- 閾値: 0.8（80%以上の類似度で候補として返す）
+- 同音異字のクライアント重複を防止（例: 「田中」と「多中」）
+- `/api/dedup/check` エンドポイントで登録前チェックとして利用可能
+
+### 登録前重複チェック API
+
+`POST /api/dedup/check` エンドポイントが3段階の重複チェックを実行:
+
+1. **完全一致チェック**: MERGE キーの正規化後の完全一致
+2. **読み仮名ファジーマッチ**: Client/KeyPerson/Supporter/Guardian の kana 類似度
+3. **セマンティック類似チェック**: NgAction/CarePreference のベクトル類似度
+
+```json
+POST /api/dedup/check
+{
+  "label": "Client",
+  "properties": {"name": "田中太郎"}
+}
+→ {
+  "hasCandidates": true,
+  "candidates": [{"name": "田中太郎", "similarity": 1.0, "matchType": "exact", ...}],
+  "checksPerformed": ["exact", "kana"]
+}
+```
+
 ### 医学用語エイリアスマッピング
 
 `api/app/lib/normalize.py::CONDITION_ALIASES` に定義。現在のマッピング：
@@ -479,3 +508,4 @@ REMOVE sp.office_name, sp.corp_name, sp.service_type,
 | 2026-03-12 | v2.2 MeetingRecord ノード・RECORDED リレーション追加。ベクトルインデックス2本追加（meeting_record_embedding, meeting_record_text_embedding）。Client summaryEmbedding による類似度分析対応 |
 | 2026-04-14 | v2.3 ノード重複防止。テキスト正規化（NFC/全角→半角/敬称除去）、Condition エイリアス解決、sourceHash 自動生成、セマンティック重複検出（NgAction/CarePreference）を追加 |
 | 2026-04-14 | v2.4 Phase 2 重複防止。kana自動生成、Certificate複合MERGEキー、ServiceProvider wamnetId優先MERGE、sourceHashバックフィルスクリプト追加 |
+| 2026-04-14 | v2.5 Phase 3 重複防止。kana ファジーマッチ、登録前重複チェック API (`/api/dedup/check`)、`/api/narratives/register` へのセマンティック重複警告統合 |

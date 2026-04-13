@@ -3,7 +3,7 @@
 Mocks Gemini extraction and Neo4j operations.
 """
 
-from unittest.mock import patch, AsyncMock
+from unittest.mock import patch, AsyncMock, MagicMock
 
 
 class TestExtract:
@@ -164,7 +164,8 @@ class TestRegister:
             "registered_count": 2,
             "registered_types": ["Client", "NgAction"],
         }
-        with patch("app.routers.narratives.register_to_database", return_value=mock_result):
+        with patch("app.routers.narratives.register_to_database", return_value=mock_result), \
+             patch("app.routers.narratives.find_semantic_duplicates", new_callable=AsyncMock, return_value=[]):
             graph = {
                 "nodes": [
                     {"temp_id": "c1", "label": "Client", "properties": {"name": "田中太郎"}},
@@ -178,6 +179,86 @@ class TestRegister:
         assert data["status"] == "success"
         assert data["client_name"] == "田中太郎"
         assert data["registered_count"] == 2
+
+    def test_register_returns_empty_semantic_duplicates_by_default(self, client):
+        """Register endpoint always returns semanticDuplicates field (empty list when no dups)."""
+        mock_result = {
+            "status": "success",
+            "client_name": "佐藤花子",
+            "registered_count": 1,
+            "registered_types": ["Client"],
+        }
+        with patch("app.routers.narratives.register_to_database", return_value=mock_result), \
+             patch("app.routers.narratives.find_semantic_duplicates", new_callable=AsyncMock, return_value=[]):
+            graph = {
+                "nodes": [
+                    {"temp_id": "c1", "label": "Client", "properties": {"name": "佐藤花子"}},
+                ],
+                "relationships": [],
+            }
+            resp = client.post("/api/narratives/register", json=graph)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "semanticDuplicates" in data
+        assert data["semanticDuplicates"] == []
+
+    def test_register_returns_semantic_duplicate_warnings(self, client):
+        """When semantically similar NgAction exists, warnings are included in response."""
+        mock_result = {
+            "status": "success",
+            "client_name": "田中太郎",
+            "registered_count": 2,
+            "registered_types": ["Client", "NgAction"],
+        }
+        mock_candidates = [
+            {"text": "大声を出す", "score": 0.92, "nodeId": "4:abc123:0"},
+        ]
+        with patch("app.routers.narratives.register_to_database", return_value=mock_result), \
+             patch("app.routers.narratives.find_semantic_duplicates", new_callable=AsyncMock, return_value=mock_candidates):
+            graph = {
+                "nodes": [
+                    {"temp_id": "c1", "label": "Client", "properties": {"name": "田中太郎"}},
+                    {"temp_id": "ng1", "label": "NgAction", "properties": {"action": "大声で叫ぶ", "riskLevel": "Panic"}},
+                ],
+                "relationships": [],
+            }
+            resp = client.post("/api/narratives/register", json=graph)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["semanticDuplicates"]) == 1
+        dup = data["semanticDuplicates"][0]
+        assert dup["label"] == "NgAction"
+        assert dup["new_text"] == "大声で叫ぶ"
+        assert dup["existing_text"] == "大声を出す"
+        assert dup["similarity_score"] == 0.92
+        assert dup["node_id"] == "4:abc123:0"
+
+    def test_register_semantic_dedup_failure_does_not_break_registration(self, client):
+        """If semantic dedup raises an exception, registration still succeeds (best effort)."""
+        mock_result = {
+            "status": "success",
+            "client_name": "田中太郎",
+            "registered_count": 2,
+            "registered_types": ["Client", "NgAction"],
+        }
+        with patch("app.routers.narratives.register_to_database", return_value=mock_result), \
+             patch("app.routers.narratives.find_semantic_duplicates", new_callable=AsyncMock, side_effect=RuntimeError("embedding service unavailable")):
+            graph = {
+                "nodes": [
+                    {"temp_id": "c1", "label": "Client", "properties": {"name": "田中太郎"}},
+                    {"temp_id": "ng1", "label": "NgAction", "properties": {"action": "大声", "riskLevel": "Panic"}},
+                ],
+                "relationships": [],
+            }
+            resp = client.post("/api/narratives/register", json=graph)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "success"
+        # semanticDuplicates is empty because the check failed silently
+        assert data["semanticDuplicates"] == []
 
     def test_register_db_error_returns_422(self, client):
         """When register_to_database returns error status, API returns 422."""
