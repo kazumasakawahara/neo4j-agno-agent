@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import dashboard, clients, narratives, narrative_intake, quicklog, chat, search, ecomap, meetings, system, dedup
+from app.routers import dashboard, clients, narratives, narrative_intake, quicklog, chat, search, ecomap, meetings, system, dedup, graph
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,7 @@ app.include_router(ecomap.router)
 app.include_router(meetings.router)
 app.include_router(system.router)
 app.include_router(dedup.router)
+app.include_router(graph.router)
 
 
 @app.get("/api/health")
