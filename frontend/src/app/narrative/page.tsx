@@ -77,7 +77,9 @@ export default function NarrativePage() {
         setProgress(event);
         if (event.stage === "complete" && event.data?.graph) {
           setExtractedData(event.data.graph as ExtractedGraph);
-          setSemanticWarnings(event.data.semanticWarnings || []);
+          setSemanticWarnings(
+            (event.data.semanticWarnings as SemanticWarning[] | undefined) || []
+          );
           setStep(2);
         }
         if (event.stage === "error") {

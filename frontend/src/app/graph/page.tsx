@@ -1,13 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { KnowledgeGraphViewer, SelectedNode } from "@/components/domain/KnowledgeGraphViewer";
+import type { SelectedNode } from "@/components/domain/KnowledgeGraphViewer";
 import { NODE_COLORS, LABEL_JP, getNodeColor } from "@/lib/graphColors";
 import { api } from "@/lib/api";
+
+// Sigma.js uses WebGL and must not be pre-rendered on the server
+const KnowledgeGraphViewer = dynamic(
+  () =>
+    import("@/components/domain/KnowledgeGraphViewer").then(
+      (mod) => mod.KnowledgeGraphViewer
+    ),
+  { ssr: false }
+);
 
 export default function GraphPage() {
   const [startLabel, setStartLabel] = useState<string>("");
