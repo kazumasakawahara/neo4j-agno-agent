@@ -91,4 +91,26 @@ export const api = {
         `/api/ecomap/${encodeURIComponent(name)}?template=${template || "full_view"}`
       ),
   },
+  graph: {
+    explore: (params?: {
+      startLabel?: string;
+      startName?: string;
+      maxDepth?: number;
+      maxNodes?: number;
+    }) => {
+      const sp = new URLSearchParams();
+      if (params?.startLabel) sp.set("startLabel", params.startLabel);
+      if (params?.startName) sp.set("startName", params.startName);
+      if (params?.maxDepth) sp.set("maxDepth", String(params.maxDepth));
+      if (params?.maxNodes) sp.set("maxNodes", String(params.maxNodes));
+      const qs = sp.toString();
+      return fetchApi<{
+        nodes: Array<{ id: string; label: string; name: string; properties: Record<string, unknown> }>;
+        edges: Array<{ id: string; source: string; target: string; type: string; properties: Record<string, unknown> }>;
+        truncated: boolean;
+      }>(`/api/graph/explore${qs ? `?${qs}` : ""}`);
+    },
+    labels: () => fetchApi<{ labels: Array<{ label: string; count: number }> }>("/api/graph/labels"),
+    stats: () => fetchApi<{ total_nodes: number; total_edges: number }>("/api/graph/stats"),
+  },
 };

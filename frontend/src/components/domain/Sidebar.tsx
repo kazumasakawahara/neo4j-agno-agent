@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/clients", label: "クライアント一覧", section: "管理" },
   { href: "/search", label: "セマンティック検索", section: "活用" },
   { href: "/ecomap", label: "エコマップ", section: "活用" },
+  { href: "/graph", label: "知識グラフ", section: "活用" },
   { href: "/chat", label: "AIチャット", section: "活用" },
   { href: "/settings", label: "LLM設定", section: "設定" },
 ];
