@@ -351,6 +351,72 @@ class TestRegisterToDatabaseRelationships:
         assert result["status"] == "success"
 
 
+class TestRegisterNodeNormalization:
+    def test_client_name_strips_whitespace(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Client", "properties": {"name": "  田中太郎  "}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        assert result["client_name"] == "田中太郎"
+
+    def test_client_name_strips_honorific(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Client", "properties": {"name": "田中太郎さん"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["client_name"] == "田中太郎"
+
+    def test_condition_alias_resolved(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Condition", "properties": {"name": "ASD"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "Condition" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        assert merge_call.args[1]["name"] == "自閉症スペクトラム障害"
+
+    def test_ngaction_text_normalized(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "NgAction", "properties": {"action": "  大きな\u3000音  "}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "NgAction" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        assert merge_call.args[1]["action"] == "大きな 音"
+
+    def test_care_preference_normalized(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "CarePreference", "properties": {"category": " パニック時 ", "instruction": " 静かに見守る "}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "CarePreference" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        assert merge_call.args[1]["category"] == "パニック時"
+        assert merge_call.args[1]["instruction"] == "静かに見守る"
+
+
 class TestRegisterToDatabaseAuditLog:
     """Test audit log creation during registration."""
 

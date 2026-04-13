@@ -10,12 +10,20 @@ from neo4j import GraphDatabase, Driver
 from neo4j.time import Date as Neo4jDate, DateTime as Neo4jDateTime, Time as Neo4jTime, Duration as Neo4jDuration
 
 from app.config import settings
+from app.lib.normalize import normalize_name, normalize_text, normalize_condition
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
+
+# Labels whose "name" merge key should be normalized with normalize_name()
+# (strips whitespace, fullwidth chars, and Japanese honorific suffixes).
+_NAME_NORMALIZED_LABELS: set[str] = {
+    "Client", "Supporter", "KeyPerson", "Guardian",
+    "Hospital", "Organization", "ServiceProvider",
+}
 
 MERGE_KEYS: dict[str, list[str]] = {
     "Client": ["name"],
@@ -164,6 +172,20 @@ def _register_node(
 
     props = {k: v for k, v in properties.items() if v is not None}
 
+    # Normalize merge key values for consistent MERGE matching
+    if label in MERGE_KEYS:
+        if label in _NAME_NORMALIZED_LABELS:
+            if "name" in props and isinstance(props["name"], str):
+                props["name"] = normalize_name(props["name"])
+        elif label == "Condition":
+            if "name" in props and isinstance(props["name"], str):
+                props["name"] = normalize_condition(props["name"])
+        else:
+            # Generic text normalization for all other merge keys
+            for k in MERGE_KEYS[label]:
+                if k in props and isinstance(props[k], str):
+                    props[k] = normalize_text(props[k])
+
     if label in MERGE_KEYS:
         keys = MERGE_KEYS[label]
         # Ensure all merge keys are present
@@ -272,9 +294,9 @@ def register_to_database(
                 label = node.get("label", "")
                 properties = node.get("properties", {}) or {}
 
-                # Extract client name for the response
+                # Extract client name for the response (normalized)
                 if label == "Client" and "name" in properties:
-                    client_name = properties["name"]
+                    client_name = normalize_name(properties.get("name", ""))
 
                 if _register_node(session, label, properties):
                     registered_count += 1
