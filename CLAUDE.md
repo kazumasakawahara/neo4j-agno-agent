@@ -81,6 +81,7 @@ cd frontend && pnpm dev --port 3001
    - `server.py`: MCP server for Claude Desktop integration (40+ tools)
    - `sos/api_server.py`: FastAPI for SOS emergency notifications with LINE integration
    - `mobile/api_server.py`: FastAPI for mobile narrative input (Gemini extraction + Neo4j)
+   - **Dedup Check API** (`/api/dedup/check`): 登録前重複チェック。3段階検出（完全一致 + kana ファジー + セマンティック類似）
 
 5. **Shared Libraries** (`lib/`):
    - `db_operations.py`: Neo4j connection, query execution, data registration, dashboard stats
