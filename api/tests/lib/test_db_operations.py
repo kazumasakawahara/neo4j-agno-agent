@@ -529,3 +529,53 @@ class TestSourceHashAutoGeneration:
             hashes.append(call.args[1]["props"]["sourceHash"])
 
         assert hashes[0] == hashes[1]
+
+
+# ---------------------------------------------------------------------------
+# Client kana auto-generation
+# ---------------------------------------------------------------------------
+
+class TestClientKanaAutoGeneration:
+    def test_client_gets_kana_auto_generated(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Client", "properties": {"name": "田中太郎"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        assert result["status"] == "success"
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "Client" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        extra_props = merge_call.args[1]["extra_props"]
+        assert "kana" in extra_props
+        assert extra_props["kana"] == "たなかたろう"
+
+    def test_client_preserves_existing_kana(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Client", "properties": {"name": "田中太郎", "kana": "カスタムかな"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            result = register_to_database(graph)
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "Client" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        extra_props = merge_call.args[1]["extra_props"]
+        assert extra_props["kana"] == "カスタムかな"
+
+    def test_supporter_does_not_get_kana(self):
+        mock_driver = _make_mock_driver()
+        graph = {
+            "nodes": [{"label": "Supporter", "properties": {"name": "鈴木"}}],
+            "relationships": [],
+        }
+        with patch("app.lib.db_operations.get_driver", return_value=mock_driver):
+            register_to_database(graph)
+        mock_session = mock_driver.session.return_value.__enter__.return_value
+        calls = mock_session.run.call_args_list
+        merge_call = [c for c in calls if "Supporter" in str(c.args[0]) and "MERGE" in str(c.args[0])][0]
+        extra_props = merge_call.args[1]["extra_props"]
+        assert "kana" not in extra_props
