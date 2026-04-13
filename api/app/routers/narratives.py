@@ -1,10 +1,13 @@
 """Narratives router — Gemini-based text extraction, validation, registration, and safety check."""
 
+import asyncio
+import json
 import logging
 import os
 from io import BytesIO
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
 from app.agents.gemini_agent import extract_from_text, check_safety_compliance
 from app.agents.validator import validate_schema
@@ -50,6 +53,113 @@ async def extract(request: ExtractionRequest):
     except Exception as exc:
         logger.error("extract failed: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@router.post("/extract-stream")
+async def extract_stream(request: ExtractionRequest):
+    """ナラティブテキストの抽出進捗を SSE でストリーミングする。
+
+    イベントは {stage, progress, message, data?} の JSON オブジェクト。
+    """
+
+    async def event_generator():
+        def sse(event: dict) -> str:
+            return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+        try:
+            yield sse({"stage": "started", "progress": 0, "message": "処理を開始しました"})
+            await asyncio.sleep(0.01)
+
+            # Stage 1: chunking
+            yield sse({"stage": "chunking", "progress": 15, "message": "テキストを解析しています"})
+            await asyncio.sleep(0.01)
+
+            # Stage 2: extraction (Gemini call)
+            yield sse({"stage": "extracting", "progress": 30, "message": "Gemini でエンティティを抽出中..."})
+            try:
+                result = await extract_from_text(request.text, request.client_name)
+            except Exception as exc:
+                yield sse({"stage": "error", "progress": 0, "message": f"抽出失敗: {exc}"})
+                return
+            if result is None:
+                yield sse({"stage": "error", "progress": 0, "message": "抽出結果が空でした"})
+                return
+            yield sse({
+                "stage": "extracting",
+                "progress": 60,
+                "message": f"抽出完了: {len(result.get('nodes', []))} ノード",
+            })
+            await asyncio.sleep(0.01)
+
+            # Stage 3: validation
+            yield sse({"stage": "validating", "progress": 70, "message": "構造を検証中..."})
+            try:
+                validation = validate_schema(result)
+                if not validation.get("is_valid", True):
+                    yield sse({
+                        "stage": "validating",
+                        "progress": 70,
+                        "message": f"警告: {len(validation.get('warnings', []))}件",
+                    })
+            except Exception as exc:
+                logger.warning("validation failed: %s", exc)
+            await asyncio.sleep(0.01)
+
+            # Stage 4: semantic dedup check
+            yield sse({"stage": "dedup_check", "progress": 85, "message": "意味的重複を検査中..."})
+            semantic_warnings = []
+            for node in result.get("nodes", []):
+                config = _SEMANTIC_CHECK_CONFIG.get(node.get("label"))
+                if not config:
+                    continue
+                text = node.get("properties", {}).get(config["prop"], "")
+                if not text:
+                    continue
+                try:
+                    candidates = await find_semantic_duplicates(
+                        text,
+                        label=node["label"],
+                        index_name=config["index"],
+                    )
+                    for c in candidates:
+                        semantic_warnings.append({
+                            "new_text": text,
+                            "existing_text": c.get("text", ""),
+                            "similarity_score": c.get("score", 0.0),
+                            "label": node["label"],
+                            "node_id": c.get("nodeId", ""),
+                        })
+                except Exception as exc:
+                    logger.warning("dedup check failed: %s", exc)
+            await asyncio.sleep(0.01)
+
+            # Stage 5: complete
+            yield sse({
+                "stage": "complete",
+                "progress": 100,
+                "message": (
+                    f"完了: {len(result.get('nodes', []))}ノード, "
+                    f"{len(result.get('relationships', []))}リレーション"
+                ),
+                "data": {
+                    "graph": result,
+                    "semanticWarnings": semantic_warnings,
+                },
+            })
+
+        except Exception as exc:
+            logger.error("SSE stream failed: %s", exc, exc_info=True)
+            yield sse({"stage": "error", "progress": 0, "message": str(exc)})
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/validate", response_model=ValidationResult)
