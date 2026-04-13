@@ -12,6 +12,8 @@ Gemini 2.0 Flash などの LLM からの抽出グラフデータ (nodes, relatio
 動的にマージするハイブリッド型の register_to_database を実装。
 """
 
+import hashlib
+import json as json_module  # avoid conflict if 'json' used elsewhere
 import os
 import re
 import sys
@@ -19,6 +21,7 @@ from datetime import date
 from typing import Optional
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
+from lib.normalize import normalize_name, normalize_text, normalize_condition, name_to_kana
 
 load_dotenv()
 
@@ -215,7 +218,16 @@ MERGE_KEYS = {
     "ServiceProvider": ["name"],
     "Hospital": ["name"],
     "Guardian": ["name"],
-    "Certificate": ["type"]
+    "Certificate": ["type", "grade"]
+}
+
+_NAME_NORMALIZED_LABELS = {
+    "Client", "Supporter", "KeyPerson", "Guardian",
+    "Hospital", "Organization", "ServiceProvider",
+}
+
+_HASHABLE_CREATE_LABELS = {
+    "SupportLog", "MeetingRecord", "LifeHistory", "Wish",
 }
 
 # 常に新規作成するノードラベル（MERGE_KEYSに含まれないもの）
@@ -260,7 +272,7 @@ def register_to_database(extracted_graph: dict, user_name: str = "system") -> di
     # コンテキスト（主となるクライアント名）を取得（監査ログ用）
     for node in extracted_graph.get("nodes", []):
         if node.get("label") == "Client":
-            client_name_context = node.get("properties", {}).get("name", "Unknown")
+            client_name_context = normalize_name(node.get("properties", {}).get("name", "Unknown"))
             break
 
     # ---------------------------------------------------------
@@ -282,10 +294,40 @@ def register_to_database(extracted_graph: dict, user_name: str = "system") -> di
         internal_id = None
         action_type = "CREATE"
 
+        # --- Normalize properties before MERGE/CREATE ---
+        if label in MERGE_KEYS:
+            if label in _NAME_NORMALIZED_LABELS:
+                if "name" in props and isinstance(props["name"], str):
+                    props["name"] = normalize_name(props["name"])
+                if label == "ServiceProvider" and props.get("wamnetId"):
+                    props["wamnetId"] = normalize_text(str(props["wamnetId"]))
+                if label == "Client" and "kana" not in props:
+                    name_val = props.get("name", "")
+                    if name_val:
+                        kana = name_to_kana(name_val)
+                        if kana:
+                            props["kana"] = kana
+            elif label == "Condition":
+                if "name" in props and isinstance(props["name"], str):
+                    props["name"] = normalize_condition(props["name"])
+            elif label == "Certificate":
+                for k in MERGE_KEYS[label]:
+                    if k in props and isinstance(props[k], str):
+                        props[k] = normalize_text(props[k])
+                if "grade" not in props or not props["grade"]:
+                    props["grade"] = "不明"
+            else:
+                for k in MERGE_KEYS[label]:
+                    if k in props and isinstance(props[k], str):
+                        props[k] = normalize_text(props[k])
+
         # MERGE (重複更新) か CREATE (新規作成) かの判定
         if label in MERGE_KEYS:
             match_props = {k: props[k] for k in MERGE_KEYS[label] if k in props}
             if match_props:
+                # ServiceProvider: prefer wamnetId when available
+                if label == "ServiceProvider" and "wamnetId" in props and props["wamnetId"]:
+                    match_props = {"wamnetId": props["wamnetId"]}
                 # プロパティキーの安全性検証（英数字とアンダースコアのみ許可）
                 if not all(re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', k) for k in match_props):
                     log(f"不正なプロパティキー: {list(match_props.keys())} - スキップ", "WARN")
@@ -308,6 +350,10 @@ def register_to_database(extracted_graph: dict, user_name: str = "system") -> di
                 log(f"MERGEキーが不足しているためスキップ: {label} - {props}", "WARN")
         else:
             # SupportLog, LifeHistory などは常に新規作成
+            # Auto-generate sourceHash for dedup
+            if label in _HASHABLE_CREATE_LABELS and "sourceHash" not in props:
+                hash_input = json_module.dumps(props, sort_keys=True, ensure_ascii=False, default=str)
+                props["sourceHash"] = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()
             cypher = f"""
             CREATE (n:{label})
             SET n = $props
