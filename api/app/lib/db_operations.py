@@ -37,6 +37,7 @@ MERGE_KEYS: dict[str, list[str]] = {
     "Organization": ["name"],
     "ServiceProvider": ["name"],
     "Hospital": ["name"],
+    "Doctor": ["name"],
     "Guardian": ["name"],
     "Certificate": ["type", "grade"],
 }
@@ -70,6 +71,7 @@ ALLOWED_REL_TYPES: set[str] = {
     "RECEIVES",
     "REGISTERED_AT",
     "TREATED_AT",
+    "HAS_DOCTOR",
     "SUPPORTED_BY",
     "LOGGED",
     "ABOUT",

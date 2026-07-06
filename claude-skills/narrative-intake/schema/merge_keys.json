@@ -1,25 +1,52 @@
 {
-  "_source": "lib/db_new_operations.py::MERGE_KEYS (2026-04-12 mirror)",
+  "_source": "api/app/lib/db_operations.py (mirror via sync_narrative_intake_schema.py)",
   "_note": "merge_keys に含まれるラベルはノードJSONに必ず mergeKey フィールドを付けること。含まれないラベルは常に CREATE される。",
   "merge_keys": {
-    "Client": ["name"],
-    "Supporter": ["name"],
-    "NgAction": ["action"],
-    "CarePreference": ["category", "instruction"],
-    "Condition": ["name"],
-    "KeyPerson": ["name"],
-    "Organization": ["name"],
-    "ServiceProvider": ["name"],
-    "Hospital": ["name"],
-    "Guardian": ["name"],
-    "Certificate": ["type"]
+    "Client": [
+      "name"
+    ],
+    "Supporter": [
+      "name"
+    ],
+    "NgAction": [
+      "action"
+    ],
+    "CarePreference": [
+      "category",
+      "instruction"
+    ],
+    "Condition": [
+      "name"
+    ],
+    "KeyPerson": [
+      "name"
+    ],
+    "Organization": [
+      "name"
+    ],
+    "ServiceProvider": [
+      "name"
+    ],
+    "Hospital": [
+      "name"
+    ],
+    "Doctor": [
+      "name"
+    ],
+    "Guardian": [
+      "name"
+    ],
+    "Certificate": [
+      "type",
+      "grade"
+    ]
   },
   "create_only": [
-    "SupportLog",
-    "LifeHistory",
-    "Wish",
     "AuditLog",
+    "LifeHistory",
+    "MeetingRecord",
     "PublicAssistance",
-    "MeetingRecord"
+    "SupportLog",
+    "Wish"
   ]
 }

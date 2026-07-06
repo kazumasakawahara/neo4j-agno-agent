@@ -7,7 +7,7 @@
     "SupportLog.type": ["日常記録", "インシデント", "会議", "引き継ぎ"],
     "CarePreference.priority": ["High", "Medium", "Low"],
     "Certificate.status": ["Active", "Expired", "Pending"],
-    "Condition.status": ["Active", "Resolved", "Unknown"],
+    "Condition.status": ["Active", "Resolved", "Unknown", "Monitoring"],
     "KeyPerson.rank_range": "1..9 (1 = 最優先)"
   },
   "japanese_allowed_fields": {
