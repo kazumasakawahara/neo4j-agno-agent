@@ -1,5 +1,5 @@
 {
-  "_source": "lib/db_new_operations.py::ALLOWED_LABELS (2026-04-12 mirror)",
+  "_source": "api/app/lib/db_operations.py (mirror via sync_narrative_intake_schema.py)",
   "_note": "このファイルはマスターではない。変更はコード側で行い sync スクリプトで反映すること。",
   "merge_labels": [
     "Client",
@@ -11,16 +11,17 @@
     "Organization",
     "ServiceProvider",
     "Hospital",
+    "Doctor",
     "Guardian",
     "Certificate"
   ],
   "create_only_labels": [
-    "SupportLog",
-    "LifeHistory",
-    "Wish",
     "AuditLog",
+    "LifeHistory",
+    "MeetingRecord",
     "PublicAssistance",
-    "MeetingRecord"
+    "SupportLog",
+    "Wish"
   ],
   "all_allowed": [
     "Client",
@@ -32,13 +33,14 @@
     "Organization",
     "ServiceProvider",
     "Hospital",
+    "Doctor",
     "Guardian",
     "Certificate",
-    "SupportLog",
-    "LifeHistory",
-    "Wish",
     "AuditLog",
+    "LifeHistory",
+    "MeetingRecord",
     "PublicAssistance",
-    "MeetingRecord"
+    "SupportLog",
+    "Wish"
   ]
 }
