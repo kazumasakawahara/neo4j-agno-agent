@@ -217,13 +217,17 @@ MERGE_KEYS = {
     "Organization": ["name"],
     "ServiceProvider": ["name"],
     "Hospital": ["name"],
+    "Doctor": ["name"],
     "Guardian": ["name"],
+    "Relative": ["name"],
+    "Identity": ["name", "dob"],
     "Certificate": ["type", "grade"]
 }
 
 _NAME_NORMALIZED_LABELS = {
     "Client", "Supporter", "KeyPerson", "Guardian",
     "Hospital", "Organization", "ServiceProvider",
+    "Doctor", "Relative", "Identity",
 }
 
 _HASHABLE_CREATE_LABELS = {
@@ -231,9 +235,12 @@ _HASHABLE_CREATE_LABELS = {
 }
 
 # 常に新規作成するノードラベル（MERGE_KEYSに含まれないもの）
+# - CareRole: クライアント（担当者）配下スコープで作成する（ENT-16。全クライアント
+#   共通の同名ノードに MERGE すると未カバーのタスクが「カバー済み」と誤診断される）
+# - Review: 確認記録は追記のみ（ENT-24。既存を更新・削除しない）
 ALLOWED_CREATE_LABELS = {
     "SupportLog", "LifeHistory", "Wish", "AuditLog", "PublicAssistance",
-    "MeetingRecord",
+    "MeetingRecord", "CareRole", "ProviderFeedback", "Review",
 }
 
 # 許可するノードラベルの全集合（Cypherインジェクション防止）
@@ -246,6 +253,8 @@ ALLOWED_REL_TYPES = {
     "REGISTERED_AT", "TREATED_AT", "SUPPORTED_BY", "LOGGED", "ABOUT",
     "FOLLOWS", "USES_SERVICE", "HAS_HISTORY", "HAS_WISH", "AUDIT_FOR",
     "HAS_IDENTITY", "RECORDED",
+    "HAS_DOCTOR", "IS_PARENT_OF", "FAMILY_OF", "PERFORMS",
+    "CAN_BE_PERFORMED_BY", "HAS_FEEDBACK", "WROTE", "REVIEWED",
 }
 
 def register_to_database(extracted_graph: dict, user_name: str = "system") -> dict:

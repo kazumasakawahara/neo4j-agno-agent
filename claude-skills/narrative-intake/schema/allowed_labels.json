@@ -13,13 +13,18 @@
     "Hospital",
     "Doctor",
     "Guardian",
+    "Relative",
+    "Identity",
     "Certificate"
   ],
   "create_only_labels": [
     "AuditLog",
+    "CareRole",
     "LifeHistory",
     "MeetingRecord",
+    "ProviderFeedback",
     "PublicAssistance",
+    "Review",
     "SupportLog",
     "Wish"
   ],
@@ -35,11 +40,16 @@
     "Hospital",
     "Doctor",
     "Guardian",
+    "Relative",
+    "Identity",
     "Certificate",
     "AuditLog",
+    "CareRole",
     "LifeHistory",
     "MeetingRecord",
+    "ProviderFeedback",
     "PublicAssistance",
+    "Review",
     "SupportLog",
     "Wish"
   ]
