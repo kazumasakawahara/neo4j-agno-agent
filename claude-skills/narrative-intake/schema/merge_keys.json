@@ -36,6 +36,13 @@
     "Guardian": [
       "name"
     ],
+    "Relative": [
+      "name"
+    ],
+    "Identity": [
+      "name",
+      "dob"
+    ],
     "Certificate": [
       "type",
       "grade"
@@ -43,9 +50,12 @@
   },
   "create_only": [
     "AuditLog",
+    "CareRole",
     "LifeHistory",
     "MeetingRecord",
+    "ProviderFeedback",
     "PublicAssistance",
+    "Review",
     "SupportLog",
     "Wish"
   ]

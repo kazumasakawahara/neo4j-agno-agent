@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 _NAME_NORMALIZED_LABELS: set[str] = {
     "Client", "Supporter", "KeyPerson", "Guardian",
     "Hospital", "Organization", "ServiceProvider",
+    "Doctor", "Relative", "Identity",
 }
 
 MERGE_KEYS: dict[str, list[str]] = {
@@ -39,9 +40,14 @@ MERGE_KEYS: dict[str, list[str]] = {
     "Hospital": ["name"],
     "Doctor": ["name"],
     "Guardian": ["name"],
+    "Relative": ["name"],
+    "Identity": ["name", "dob"],
     "Certificate": ["type", "grade"],
 }
 
+# CareRole: create per client/caregiver scope (ENT-16 — merging onto a shared
+# same-name node makes uncovered tasks look "covered" in resilience checks).
+# Review: append-only confirmation record (ENT-24 — never update or delete).
 ALLOWED_CREATE_LABELS: set[str] = {
     "SupportLog",
     "LifeHistory",
@@ -49,6 +55,9 @@ ALLOWED_CREATE_LABELS: set[str] = {
     "AuditLog",
     "PublicAssistance",
     "MeetingRecord",
+    "CareRole",
+    "ProviderFeedback",
+    "Review",
 }
 
 ALLOWED_LABELS: set[str] = set(MERGE_KEYS.keys()) | ALLOWED_CREATE_LABELS
@@ -82,6 +91,13 @@ ALLOWED_REL_TYPES: set[str] = {
     "AUDIT_FOR",
     "HAS_IDENTITY",
     "RECORDED",
+    "IS_PARENT_OF",
+    "FAMILY_OF",
+    "PERFORMS",
+    "CAN_BE_PERFORMED_BY",
+    "HAS_FEEDBACK",
+    "WROTE",
+    "REVIEWED",
 }
 
 # ---------------------------------------------------------------------------
