@@ -6,6 +6,8 @@
     "ADDRESSES",
     "AUDIT_FOR",
     "CAN_BE_PERFORMED_BY",
+    "CONFIRMS",
+    "CONTRADICTS",
     "FAMILY_OF",
     "FOLLOWS",
     "HAS_CERTIFICATE",
