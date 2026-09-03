@@ -1,7 +1,7 @@
 # HANDOVER — neo4j-agno-agent
 
 > 2026-09-04 作成。環境まわりの申し送りのみ。作業履歴は git log と CLAUDE.md / README.md を参照。
-> このリポジトリの `docker-compose.yml`（container_name: support-db-neo4j）は今回触っていない。`NEO4J_AUTH` は初期値の直書きのまま。稼働中の DB は oya-inai-db-neo4j / nest-support-neo4j（いずれも 7474/7687）なので、ここから起動するとポートが衝突する。
+> このリポジトリの `docker-compose.yml`（container_name: support-db-neo4j）も `NEO4J_AUTH` を `${NEO4J_USERNAME:?}/${NEO4J_PASSWORD:?}` 展開に変更済み（2026-09-04）。稼働中の DB は oya-inai-db-neo4j / nest-support-neo4j（いずれも 7474/7687）なので、ここから起動するとポートが衝突する。
 
 ## Neo4j 認証の置き場（2026-09-04）
 
