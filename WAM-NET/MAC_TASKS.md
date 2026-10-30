@@ -35,7 +35,8 @@
    ```bash
    cd ~/Dev-Work/neo4j-agno-agent
    git pull
-   set -a; source .env; set +a
+   # Neo4j の接続情報を読む。2026-10-30 以降は ~/.config/nest/neo4j.env にある（無ければ .env）
+   set -a; source "${XDG_CONFIG_HOME:-$HOME/.config}/nest/neo4j.env" 2>/dev/null || source .env; set +a
    uv run --with neo4j python WAM-NET/count_area_mismatch.py neo4j --uri bolt://localhost:7687
    ```
 3. 結果の読み方
@@ -135,6 +136,7 @@ WAM NET の列名（事業所の名称・事業所住所（市区町村）など
 3. 書き込む前にバックアップを取る（`scripts/backup.sh` など、このリポジトリの手順で）。
 4. 書き込まずに試す（`--dry-run`）。`--prefecture` は付けない（既存ノードの prefecture が空のものを取りこぼすため）。
    ```bash
+   set -a; source "${XDG_CONFIG_HOME:-$HOME/.config}/nest/neo4j.env" 2>/dev/null || source .env; set +a
    uv run --with neo4j --with python-dotenv python claude-skills/wamnet-provider-sync/scripts/sync_providers.py \
      --mode diff --dry-run \
      --csv-file ~/Ai-Workspace/WAM-NET/wamnet_data/kitakyushu_services_202609.csv \
