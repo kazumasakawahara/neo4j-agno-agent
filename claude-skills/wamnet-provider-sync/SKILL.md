@@ -259,6 +259,25 @@ WAM NETのサービス種類名を統一形式に変換します：
 どの行にも当たらなかったノードのうち、事業所番号が無いもの（手で登録した可能性がある）には何もしない。
 既存ノードの `availability`（空き状況）は上書きしない。ノードの特定には elementId を使う。
 
+### 重複ノードをまとめる（`scripts/merge_duplicate_providers.py`）
+
+同じ事業所番号・同じサービス種類の ServiceProvider が複数あるとき、1 つにまとめる。
+
+```bash
+python scripts/merge_duplicate_providers.py --count     # 件数だけ（読み取り専用）
+python scripts/merge_duplicate_providers.py --dry-run   # 計画を件数で（読み取り専用）
+python scripts/merge_duplicate_providers.py --execute --yes   # 実行（先にバックアップ）
+```
+
+- 組の決め方: 事業所番号（wamnetId → office_number → providerId）＋ サービス種類（表記ゆれを吸収）
+- 残す側: providerId が新しい形 → 正式名の `name` がある → updatedAt が新しい → つながりが多い、の順
+- プロパティ: 残す側を土台に、空のところだけほかから埋める。レガシー名（§6.4）は正式名に寄せる。
+  `availability` など人が記録する値は「未確認」より入っている値を優先。
+  `status = 'Closed'`・`outOfArea` は全ノードに付いているときだけ残す
+- つながり: APOC `apoc.refactor.mergeNodes`（mergeRels: true）で残す側に寄せる
+- まとめた印: `mergedAt`・`mergedFrom`（元のノード数）
+- 出すのは件数だけ。事業所名・利用者名は出さない
+
 ### 変更検出対象項目
 
 以下の項目が変更された場合に「変更」と判定：

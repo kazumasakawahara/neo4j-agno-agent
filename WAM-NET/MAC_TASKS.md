@@ -169,6 +169,49 @@ WAM NET の列名（事業所の名称・事業所住所（市区町村）など
    ```
 8. 起動したコンテナは止める。
 
+## 作業 F：ServiceProvider の重複ノードを 1 つにまとめる
+
+作業 E で保留になった重複（重複の候補 653 行、重複の片割れ 765 ノード、wamnetId を持つノードだけで 290 組・580 件）を、
+`claude-skills/wamnet-provider-sync/scripts/merge_duplicate_providers.py` でまとめる。
+
+守ること: nest-support の本番 DB には触れない。出すのは件数だけ。実行（--execute）は河原さんの承認を得てから。
+
+1. 最新を取り込み、試験を通す。
+   ```bash
+   cd ~/Dev-Work/neo4j-agno-agent
+   git pull
+   (cd claude-skills/wamnet-provider-sync && uv run --with pytest --with neo4j --with python-dotenv pytest tests)
+   ```
+2. 7687 番のコンテナが support-db-neo4j（nest-support でない）ことを確かめる。
+3. 数える（読み取り専用）。
+   ```bash
+   set -a; source "${XDG_CONFIG_HOME:-$HOME/.config}/nest/neo4j.env" 2>/dev/null || source .env; set +a
+   uv run --with neo4j --with python-dotenv python claude-skills/wamnet-provider-sync/scripts/merge_duplicate_providers.py --dry-run \
+     --output ~/Ai-Workspace/WAM-NET/wamnet_data/reports/merge_dryrun_$(date +%Y%m%d).md
+   ```
+   報告するもの: 重複の組・消えるノード・組の大きさの内訳・つながりの本数（種別ごと）・値が食い違っていた組数・対象外のノード数。
+   - 組の数は 290 より多くなるはず（wamnetId の無いノードも数えるため）。消えるノードは 765 件前後が目安。
+   - 「値が食い違っていた組」の status・outOfArea が多ければ、まとめる前に理由を確かめる。
+   - 「事業所番号かサービス種類が無く対象外」は 123 件前後（作業 E の番号なしと同じはず）。
+4. 河原さんの承認を得たら、バックアップを取ってから実行する。
+   ```bash
+   ./scripts/backup.sh
+   uv run --with neo4j --with python-dotenv python claude-skills/wamnet-provider-sync/scripts/merge_duplicate_providers.py --execute --yes \
+     --output ~/Ai-Workspace/WAM-NET/wamnet_data/reports/merge_exec_$(date +%Y%m%d).md
+   ```
+   APOC が無いと止まる（docker-compose.yml の NEO4J_PLUGINS を確かめる）。
+5. まとめた後に確かめる（読み取り専用、件数だけ）。
+   - `--count` をもう一度流し、重複の組が 0 になっていること。
+   - ServiceProvider の総数が「実行前 − 消えるノード」になっていること。
+   - USES_SERVICE・HAS_FEEDBACK の総本数が、実行前と同じかそれ以下（同じつながりが重なっていた分だけ減る）であること。
+     ```cypher
+     MATCH ()-[r:USES_SERVICE]->(:ServiceProvider) RETURN count(r)
+     MATCH (:ServiceProvider)-[r:HAS_FEEDBACK]->() RETURN count(r)
+     ```
+6. 取り込みスクリプトをもう一度 dry-run し、「保留: 重複の候補」「保留: 重複の片割れ」が 0 に近くなっていることを確かめる。
+   残っていた候補 653 行は、組が 1 つになったので「ID の付け替え」に回るはず。件数を報告し、承認を得てから書き込む。
+7. 起動したコンテナは止める。
+
 ## 作業 D：プルリクエスト（任意）
 
 直したコードは neo4j-agno-agent と oya-inai-db のブランチ `claude/tender-gauss-m4ky9k` にある。
@@ -180,3 +223,4 @@ main に入れるなら、河原さんの指示を受けてからプルリクエ
 - 作業 B でどちらにしたか
 - 作業 C の定期実行を登録したか、一度動かした結果
 - 作業 E の dry-run の件数の表、利用中の利用者の人数、重なりの件数
+- 作業 F の dry-run の件数、実行後の総数とつながりの本数、取り込みの再 dry-run の件数
