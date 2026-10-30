@@ -11,6 +11,7 @@ Neo4jのServiceProviderノードに同期します。
 """
 
 import argparse
+import ast
 import csv
 import json
 import os
@@ -27,6 +28,24 @@ try:
 except ImportError:
     print("必要なパッケージをインストールしてください: pip install neo4j python-dotenv")
     sys.exit(1)
+
+
+# 対象地域の表（KITAKYUSHU_AREAS）を持つダウンローダー。skill がシンボリックリンクで置かれていても、実体のリポジトリから探す
+DOWNLOADER_PATH = Path(__file__).resolve().parents[3] / "WAM-NET" / "wamnet_downloader.py"
+
+
+def load_area_names(path: Path = DOWNLOADER_PATH) -> set:
+    """wamnet_downloader.py の KITAKYUSHU_AREAS の市区町村名（「遠賀郡芦屋町」など）。見つからなければ空。"""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except OSError:
+        return set()
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "KITAKYUSHU_AREAS" for t in node.targets
+        ):
+            return set(ast.literal_eval(node.value).values())
+    return set()
 
 
 class WAMNetSyncError(Exception):
@@ -49,12 +68,15 @@ class ServiceProviderSync:
         self.config_dir = Path(__file__).parent.parent / "config"
         self.service_types = self._load_service_types()
         self.prefectures = self._load_prefectures()
+        self.area_names = load_area_names()
         
         # 統計情報
         self.stats = {
             "new": 0,
             "modified": 0,
             "closed": 0,
+            "out_of_area": 0,
+            "unknown_area": 0,
             "unchanged": 0,
             "errors": 0
         }
@@ -64,7 +86,9 @@ class ServiceProviderSync:
             "new": [],
             "modified": [],
             "closed": [],
-            "affected_clients": []
+            "out_of_area": [],
+            # 利用者の氏名は持たない。廃止・近郊外の事業所に USES_SERVICE でつながる利用者の人数だけ
+            "affected_clients": {"closed": 0, "out_of_area": 0},
         }
 
     def _load_service_types(self) -> Dict:
@@ -159,38 +183,65 @@ class ServiceProviderSync:
         
         raise WAMNetSyncError(f"CSVの文字エンコーディングを判定できません: {csv_path}")
 
+    @staticmethod
+    def _get(row: Dict, *keys: str) -> str:
+        """最初に見つかった列の値。WAM NET の CSV の列名を先に、旧来の列名を後に並べる。"""
+        for key in keys:
+            value = row.get(key)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        return ""
+
+    def split_prefecture(self, address_city: str) -> Tuple[str, str]:
+        """「福岡県北九州市小倉南区」→（福岡県, 北九州市小倉南区）。都道府県名が無ければ（"", そのまま）。"""
+        for name in self.prefectures.get("prefectures", {}).values():
+            if address_city.startswith(name):
+                return name, address_city[len(name):]
+        return "", address_city
+
     def _row_to_provider(self, row: Dict) -> Optional[Dict]:
-        """CSV行をServiceProviderデータに変換"""
+        """CSV行をServiceProviderデータに変換
+
+        WAM NET のオープンデータ（wamnet_downloader.py の出力）の列名を読む。
+        「事業所住所（市区町村）」は「福岡県北九州市小倉南区」のように都道府県名から始まるので、
+        prefecture と city に分ける。旧来の列名（事業所名・市区町村・住所 など）も読める。
+        """
         try:
             # 事業所番号（必須）
-            provider_id = row.get("事業所番号", row.get("jigyosho_no", "")).strip()
+            provider_id = self._get(row, "事業所番号", "jigyosho_no")
             if not provider_id:
                 return None
-            
+
             # サービス種類
-            service_type_raw = row.get("サービス種類", row.get("service_type", "")).strip()
+            service_type_raw = self._get(row, "サービス種類", "service_type")
             service_type = self.normalize_service_type(service_type_raw)
-            
-            # 一意識別子を生成（事業所番号_サービス種類コード）
-            service_code = self.service_types.get("service_types", {}).get(
-                service_type_raw, {}
-            ).get("code", "00")
+
+            # 一意識別子（事業所番号_サービス種類コード）。コードは CSV の列を優先する。
+            # 設定ファイルの名前と一致しないと "00" になり、同じ事業所の別サービスが同じ ID になるため。
+            service_code = self._get(row, "サービス種類コード") or self.service_types.get(
+                "service_types", {}
+            ).get(service_type_raw, {}).get("code", "00")
             unique_id = f"{provider_id}_{service_code}"
-            
+
+            prefecture = self._get(row, "都道府県", "prefecture")
+            city = self._get(row, "事業所住所（市区町村）", "市区町村", "city")
+            pref_in_city, city = self.split_prefecture(city)
+            prefecture = prefecture or pref_in_city
+
             return {
                 "providerId": unique_id,
                 "wamnetId": provider_id,
-                "name": row.get("事業所名", row.get("jigyosho_name", "")).strip(),
+                "name": self._get(row, "事業所の名称", "事業所名", "jigyosho_name"),
                 "serviceType": service_type,
-                "postalCode": row.get("郵便番号", row.get("zip_code", "")).strip(),
-                "prefecture": row.get("都道府県", row.get("prefecture", "")).strip(),
-                "city": row.get("市区町村", row.get("city", "")).strip(),
-                "address": row.get("住所", row.get("address", "")).strip(),
-                "phone": self.normalize_phone(row.get("電話番号", row.get("tel", ""))),
-                "fax": self.normalize_phone(row.get("FAX番号", row.get("fax", ""))),
-                "capacity": self._parse_int(row.get("定員", row.get("capacity", ""))),
-                "corporateName": row.get("法人名", row.get("corporate_name", "")).strip(),
-                "designationDate": row.get("指定年月日", row.get("designation_date", "")).strip(),
+                "postalCode": self._get(row, "郵便番号", "zip_code"),
+                "prefecture": prefecture,
+                "city": city,
+                "address": self._get(row, "事業所住所（番地以降）", "住所", "address"),
+                "phone": self.normalize_phone(self._get(row, "事業所電話番号", "電話番号", "tel")),
+                "fax": self.normalize_phone(self._get(row, "事業所FAX番号", "FAX番号", "fax")),
+                "capacity": self._parse_int(self._get(row, "定員", "capacity")),
+                "corporateName": self._get(row, "法人の名称", "法人名", "corporate_name"),
+                "designationDate": self._get(row, "指定年月日", "designation_date"),
                 "availability": "未確認",
                 "updatedAt": datetime.now().isoformat()
             }
@@ -244,7 +295,7 @@ class ServiceProviderSync:
         self, 
         new_providers: List[Dict], 
         existing_providers: Dict[str, Dict]
-    ) -> Tuple[List[Dict], List[Dict], List[str]]:
+    ) -> Tuple[List[Dict], List[Dict], List[str], List[str]]:
         """
         差分を検出
         
@@ -253,7 +304,13 @@ class ServiceProviderSync:
             existing_providers: 既存データ
         
         Returns:
-            (追加リスト, 更新リスト, 廃止IDリスト)
+            (追加リスト, 更新リスト, 廃止IDリスト, 近郊外IDリスト)
+
+        新しいデータに無い既存の事業所は、次の3つに分ける。
+        - 廃止: 市区町村が新しいデータの対象地域に入る（その地域から消えた）
+        - 近郊外: 市区町村が対象地域に入らない（旧版のダウンローダーが拾った近郊外の事業所など）
+        - 判定不能: 市区町村が空。何もせず件数だけ数える
+        対象地域は、新しいデータに出てくる市区町村と、wamnet_downloader.py の KITAKYUSHU_AREAS の市区町村を合わせたもの。
         """
         to_add = []
         to_update = []
@@ -287,20 +344,37 @@ class ServiceProviderSync:
                 else:
                     self.stats["unchanged"] += 1
         
-        # 廃止検出
-        existing_ids = set(existing_providers.keys())
-        closed_ids = existing_ids - new_ids
-        self.stats["closed"] = len(closed_ids)
-        
-        for closed_id in closed_ids:
-            existing = existing_providers[closed_id]
-            self.changes["closed"].append({
-                "providerId": closed_id,
+        # 廃止・近郊外の検出
+        area_cities = {p["city"] for p in new_providers if p.get("city")} | self.area_names
+        closed_ids = []
+        out_of_area_ids = []
+        for missing_id in sorted(set(existing_providers.keys()) - new_ids):
+            existing = existing_providers[missing_id]
+            _, city = self.split_prefecture(str(existing.get("city") or "").strip())
+            entry = {
+                "providerId": missing_id,
                 "name": existing.get("name", ""),
-                "serviceType": existing.get("serviceType", "")
-            })
-        
-        return to_add, to_update, list(closed_ids)
+                "serviceType": existing.get("serviceType", ""),
+                "city": city,
+            }
+            if not city:
+                self.stats["unknown_area"] += 1
+            elif self.in_area(city, area_cities):
+                closed_ids.append(missing_id)
+                self.changes["closed"].append(entry)
+            else:
+                out_of_area_ids.append(missing_id)
+                self.changes["out_of_area"].append(entry)
+        self.stats["closed"] = len(closed_ids)
+        self.stats["out_of_area"] = len(out_of_area_ids)
+
+        return to_add, to_update, closed_ids, out_of_area_ids
+
+    @staticmethod
+    def in_area(city: str, area_cities: set) -> bool:
+        """city が対象地域に入るか。区を省いた「北九州市」は前方一致で、郡や市を省いた「芦屋町」「小倉北区」は
+        末尾一致で認める。"""
+        return city in area_cities or any(c.startswith(city) or c.endswith(city) for c in area_cities)
 
     def _is_modified(self, new: Dict, existing: Dict) -> bool:
         """変更があるか判定"""
@@ -321,32 +395,25 @@ class ServiceProviderSync:
                 diffs.append(f"{field}: {old_val} → {new_val}")
         return diffs
 
-    def check_affected_clients(self, closed_ids: List[str]):
-        """廃止事業所を利用中のクライアントを確認"""
-        if not closed_ids:
-            return
-        
+    def check_affected_clients(self, closed_ids: List[str], out_of_area_ids: List[str]):
+        """廃止・近郊外の事業所を利用中のクライアントの人数を数える（氏名は読まない）"""
+        query = """
+        MATCH (c:Client)-[r:USES_SERVICE]->(sp:ServiceProvider)
+        WHERE sp.providerId IN $ids
+          AND r.status = 'Active'
+        RETURN count(DISTINCT c) AS n
+        """
         with self.driver.session() as session:
-            query = """
-            MATCH (c:Client)-[r:USES_SERVICE]->(sp:ServiceProvider)
-            WHERE sp.providerId IN $closed_ids
-              AND r.status = 'Active'
-            RETURN c.name AS clientName, sp.name AS providerName, sp.serviceType AS serviceType
-            """
-            result = session.run(query, closed_ids=closed_ids)
-            
-            for record in result:
-                self.changes["affected_clients"].append({
-                    "clientName": record["clientName"],
-                    "providerName": record["providerName"],
-                    "serviceType": record["serviceType"]
-                })
+            for key, ids in (("closed", closed_ids), ("out_of_area", out_of_area_ids)):
+                if ids:
+                    self.changes["affected_clients"][key] = session.run(query, ids=ids).single()["n"]
 
     def sync_to_neo4j(
         self, 
         to_add: List[Dict], 
         to_update: List[Dict], 
         closed_ids: List[str],
+        out_of_area_ids: List[str] = (),
         batch_size: int = 100
     ):
         """
@@ -356,6 +423,7 @@ class ServiceProviderSync:
             to_add: 追加するデータ
             to_update: 更新するデータ
             closed_ids: 廃止としてマークするID
+            out_of_area_ids: 近郊外としてマークするID（status は変えない）
             batch_size: バッチサイズ
         """
         if self.dry_run:
@@ -380,12 +448,17 @@ class ServiceProviderSync:
                 self._mark_closed(session, closed_ids)
                 print(f"  廃止マーク: {len(closed_ids)}件")
 
+            # 近郊外マーク
+            if out_of_area_ids:
+                self._mark_out_of_area(session, list(out_of_area_ids))
+                print(f"  近郊外マーク: {len(out_of_area_ids)}件")
+
     def _batch_create(self, session, providers: List[Dict]):
         """バッチで新規作成"""
         query = """
         UNWIND $providers AS p
-        CREATE (sp:ServiceProvider)
-        SET sp = p
+        MERGE (sp:ServiceProvider {providerId: p.providerId})
+        SET sp += p
         """
         session.run(query, providers=providers)
 
@@ -395,6 +468,7 @@ class ServiceProviderSync:
         UNWIND $providers AS p
         MATCH (sp:ServiceProvider {providerId: p.providerId})
         SET sp += p
+        REMOVE sp.outOfArea, sp.outOfAreaAt
         """
         session.run(query, providers=providers)
 
@@ -407,6 +481,16 @@ class ServiceProviderSync:
             sp.closedAt = datetime()
         """
         session.run(query, closed_ids=closed_ids)
+
+    def _mark_out_of_area(self, session, ids: List[str]):
+        """近郊外としてマーク。消さずに残し、利用者とのつながりも保つ。"""
+        query = """
+        MATCH (sp:ServiceProvider)
+        WHERE sp.providerId IN $ids
+        SET sp.outOfArea = true,
+            sp.outOfAreaAt = datetime()
+        """
+        session.run(query, ids=ids)
 
     def generate_report(self) -> str:
         """更新レポートを生成"""
@@ -423,21 +507,20 @@ class ServiceProviderSync:
         report.append(f"| 🆕 新規登録 | {self.stats['new']}件 |")
         report.append(f"| 📝 更新 | {self.stats['modified']}件 |")
         report.append(f"| ⚠️ 廃止 | {self.stats['closed']}件 |")
+        report.append(f"| 🗺️ 近郊外（outOfArea を付ける） | {self.stats['out_of_area']}件 |")
+        report.append(f"| ❔ 市区町村が空で判定不能（何もしない） | {self.stats['unknown_area']}件 |")
         report.append(f"| ✅ 変更なし | {self.stats['unchanged']}件 |")
         report.append("")
         
-        # 影響を受けるクライアント
-        if self.changes["affected_clients"]:
-            report.append("## ⚠️ 要確認: 廃止事業所を利用中のクライアント\n")
-            report.append("| クライアント | 廃止事業所 | サービス種類 |")
-            report.append("|-------------|-----------|-------------|")
-            for client in self.changes["affected_clients"]:
-                report.append(
-                    f"| {client['clientName']} | {client['providerName']} | {client['serviceType']} |"
-                )
+        # 影響を受けるクライアント（人数だけ）
+        affected = self.changes["affected_clients"]
+        if affected["closed"] or affected["out_of_area"]:
+            report.append("## ⚠️ 要確認: 廃止・近郊外の事業所を利用中のクライアント\n")
+            report.append(f"- 廃止の事業所を利用中: {affected['closed']}人")
+            report.append(f"- 近郊外の事業所を利用中: {affected['out_of_area']}人")
             report.append("")
-            report.append("→ **代替事業所の検討が必要です**\n")
-        
+            report.append("→ **誰かは Neo4j で確かめ、代替事業所を検討してください**\n")
+
         # 新規登録（抜粋）
         if self.changes["new"]:
             report.append("## 新規登録事業所（抜粋・最大10件）\n")
@@ -535,13 +618,13 @@ def main():
             existing = sync.get_existing_providers(args.prefecture)
             print(f"📊 既存データ: {len(existing)}件")
             
-            to_add, to_update, closed_ids = sync.detect_changes(new_providers, existing)
+            to_add, to_update, closed_ids, out_of_area_ids = sync.detect_changes(new_providers, existing)
             
-            # 影響を受けるクライアント確認
-            sync.check_affected_clients(closed_ids)
+            # 影響を受けるクライアント確認（人数だけ）
+            sync.check_affected_clients(closed_ids, out_of_area_ids)
             
             # 同期実行
-            sync.sync_to_neo4j(to_add, to_update, closed_ids, args.batch_size)
+            sync.sync_to_neo4j(to_add, to_update, closed_ids, out_of_area_ids, args.batch_size)
             
         else:  # full mode
             print("⚠️ フルモード: 既存データを上書きします")

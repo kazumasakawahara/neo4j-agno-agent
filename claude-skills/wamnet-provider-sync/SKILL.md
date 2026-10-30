@@ -181,20 +181,22 @@ uv run python scripts/sync_providers.py --mode diff --csv-file data/current/wamn
 
 ### WAM NET CSV → Neo4j ServiceProvider
 
+`WAM-NET/wamnet_downloader.py` が出す CSV の列名を読む（括弧内は旧来の列名。どちらでも読める）。
+
 | WAM NET項目 | Neo4j プロパティ | 説明 |
 |------------|-----------------|------|
-| 事業所番号 | providerId | 一意識別子（MERGE用キー） |
-| 事業所名 | name | 事業所名称 |
+| 事業所番号 ＋ サービス種類コード | providerId | 一意識別子「事業所番号_サービス種類コード」（MERGE用キー） |
+| 事業所の名称（事業所名） | name | 事業所名称 |
 | サービス種類 | serviceType | 正規化後のサービス種類 |
-| 郵便番号 | postalCode | 郵便番号 |
-| 都道府県 | prefecture | 都道府県名 |
-| 市区町村 | city | 市区町村名 |
-| 住所 | address | 番地以降 |
-| 電話番号 | phone | ハイフン正規化 |
-| FAX番号 | fax | ハイフン正規化 |
+| 郵便番号 | postalCode | 郵便番号（WAM NET の CSV には無い） |
+| 事業所住所（市区町村）の先頭（都道府県） | prefecture | 「福岡県北九州市小倉南区」→ 福岡県 |
+| 事業所住所（市区町村）の残り（市区町村） | city | 「福岡県北九州市小倉南区」→ 北九州市小倉南区 |
+| 事業所住所（番地以降）（住所） | address | 番地以降 |
+| 事業所電話番号（電話番号） | phone | ハイフン正規化 |
+| 事業所FAX番号（FAX番号） | fax | ハイフン正規化 |
 | 定員 | capacity | 数値変換 |
-| 法人名 | corporateName | 運営法人名 |
-| 指定年月日 | designationDate | 事業開始日 |
+| 法人の名称（法人名） | corporateName | 運営法人名 |
+| 指定年月日 | designationDate | 事業開始日（WAM NET の CSV には無い） |
 | - | availability | '未確認'（初期値） |
 | - | updatedAt | 同期実行日時 |
 | - | wamnetId | 事業所番号と同じ |
@@ -235,8 +237,12 @@ WAM NETのサービス種類名を統一形式に変換します：
 
 1. **新規（NEW）**: 前回データに存在しない事業所番号
 2. **変更（MODIFIED）**: 事業所番号は同じだが内容が変更
-3. **廃止（CLOSED）**: 前回データに存在するが今回データにない
-4. **変更なし（UNCHANGED）**: 完全一致
+3. **廃止（CLOSED）**: 前回データに存在するが今回データにない。市区町村が対象地域に入るもの → `status = 'Closed'`
+4. **近郊外（OUT_OF_AREA）**: 今回データにない事業所のうち、市区町村が対象地域に入らないもの → `outOfArea = true`（消さない・status は変えない）
+5. **判定不能**: 今回データになく、市区町村が空のもの → 何もせず件数だけ報告
+6. **変更なし（UNCHANGED）**: 完全一致
+
+対象地域は、今回データに出てくる市区町村と、`WAM-NET/wamnet_downloader.py` の `KITAKYUSHU_AREAS` を合わせたもの。
 
 ### 変更検出対象項目
 
@@ -251,13 +257,17 @@ WAM NETのサービス種類名を統一形式に変換します：
 
 廃止が検出された場合、以下を自動チェック：
 
+同期スクリプトは利用者の氏名を読まず、廃止・近郊外の事業所を利用中のクライアントの**人数だけ**をレポートに出す。
+
 ```cypher
-// 廃止事業所を利用中のクライアントを検索
+// 廃止・近郊外の事業所を利用中のクライアントの人数
 MATCH (c:Client)-[r:USES_SERVICE]->(sp:ServiceProvider)
-WHERE sp.providerId = $closedProviderId
+WHERE sp.providerId IN $ids
   AND r.status = 'Active'
-RETURN c.name AS クライアント名, sp.name AS 事業所名
+RETURN count(DISTINCT c) AS n
 ```
+
+誰が利用しているかは、必要なときに Neo4j で個別に確かめる（レポートには残さない）。
 
 ---
 
@@ -319,17 +329,16 @@ RETURN c.name AS クライアント名, sp.name AS 事業所名
 | 🆕 新規登録 | 15件 |
 | 📝 更新 | 42件 |
 | ⚠️ 廃止 | 3件 |
+| 🗺️ 近郊外（outOfArea を付ける） | 0件 |
+| ❔ 市区町村が空で判定不能（何もしない） | 0件 |
 | ✅ 変更なし | 1,240件 |
 
-## ⚠️ 要確認事項
+## ⚠️ 要確認: 廃止・近郊外の事業所を利用中のクライアント
 
-### 廃止事業所を利用中のクライアント
+- 廃止の事業所を利用中: 1人
+- 近郊外の事業所を利用中: 0人
 
-| クライアント | 廃止事業所 | サービス種類 |
-|-------------|-----------|-------------|
-| 山田健太 | ○○作業所 | 就労継続支援B型 |
-
-→ **代替事業所の検討が必要です**
+→ **誰かは Neo4j で確かめ、代替事業所を検討してください**
 
 ## 新規登録事業所（抜粋）
 

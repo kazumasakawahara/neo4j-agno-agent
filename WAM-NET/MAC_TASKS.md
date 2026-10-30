@@ -117,6 +117,46 @@ uv run --with pandas python WAM-NET/count_area_mismatch.py csv ~/Ai-Workspace/WA
    ```
    やめるときは `launchctl unload ~/Library/LaunchAgents/jp.lawnest.wamnet-check.plist`。
 
+## 作業 E：ServiceProvider を 202609 で取り込み直す（2026-10-30 河原さん方針決定）
+
+方針: 近郊外の事業所は**消さずに `outOfArea = true` を付けて残す**（利用者とのつながりを保つ）。
+北九州市の二通りの書き方による重なりは、取り込み直した後に件数を見てから1つにまとめる。
+
+`claude-skills/wamnet-provider-sync/scripts/sync_providers.py` は 2026-10-30 に直した。
+WAM NET の列名（事業所の名称・事業所住所（市区町村）など）を読み、近郊外を廃止と分け、利用者は人数だけを出す。
+
+1. 最新を取り込み、試験を通す。
+   ```bash
+   cd ~/Dev-Work/neo4j-agno-agent
+   git pull
+   (cd claude-skills/wamnet-provider-sync && uv run --with pytest --with neo4j --with python-dotenv pytest tests)
+   ```
+2. 作業 A の 1 と同じく、7687 番のコンテナが nest-support の本番でないことを確かめる。
+3. 書き込む前にバックアップを取る（`scripts/backup.sh` など、このリポジトリの手順で）。
+4. 書き込まずに試す（`--dry-run`）。`--prefecture` は付けない（既存ノードの prefecture が空のものを取りこぼすため）。
+   ```bash
+   uv run --with neo4j --with python-dotenv python claude-skills/wamnet-provider-sync/scripts/sync_providers.py \
+     --mode diff --dry-run \
+     --csv-file ~/Ai-Workspace/WAM-NET/wamnet_data/kitakyushu_services_202609.csv \
+     --output ~/Desktop/sync_dryrun_202609.md
+   grep -A12 "更新結果サマリー" ~/Desktop/sync_dryrun_202609.md
+   grep -A4 "要確認" ~/Desktop/sync_dryrun_202609.md
+   ```
+   レポートには事業所名の一覧も入るが、河原さんへの報告は**件数の表と、利用中の利用者の人数だけ**にする。
+5. 結果の読み方
+   - 新規・更新・廃止・近郊外・判定不能・変更なしの件数を報告する。
+   - **更新＋変更なしが 0 に近く、廃止＋近郊外が 4000 件前後**なら、既存ノードの providerId の書き方が今のスクリプトと違う。
+     その場合は書き込まずに止め、既存の providerId の形（例: `MATCH (sp:ServiceProvider) RETURN sp.providerId LIMIT 5` の形だけ）を河原さんに報告する。
+   - 近郊外は作業 A の 638 件前後になるはず。大きく違えば理由を確かめる。
+6. 河原さんの承認を得たら、`--dry-run` を外して同じコマンドを流す。
+7. 重なりを数える（件数だけ。まとめるのは別途承認を得てから）。
+   ```cypher
+   MATCH (sp:ServiceProvider) WHERE sp.wamnetId IS NOT NULL
+   WITH sp.wamnetId AS id, sp.serviceType AS st, count(*) AS n WHERE n > 1
+   RETURN count(*) AS groups, sum(n) AS nodes
+   ```
+8. 起動したコンテナは止める。
+
 ## 作業 D：プルリクエスト（任意）
 
 直したコードは neo4j-agno-agent と oya-inai-db のブランチ `claude/tender-gauss-m4ky9k` にある。
@@ -127,3 +167,4 @@ main に入れるなら、河原さんの指示を受けてからプルリクエ
 - 作業 A の件数（新表の市区町村 / 新表に無い市区町村 / city が空）
 - 作業 B でどちらにしたか
 - 作業 C の定期実行を登録したか、一度動かした結果
+- 作業 E の dry-run の件数の表、利用中の利用者の人数、重なりの件数
