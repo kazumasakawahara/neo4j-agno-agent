@@ -215,6 +215,12 @@ class DuplicateMerger:
         number = business_number(merged)
         if number:
             merged["wamnetId"] = number
+        # providerId は組の中に新しい形（事業所番号_サービス種類コード）があればそれを使う
+        for c in cs:
+            pid = str(c.get("providerId") or "")
+            if NEW_ID.fullmatch(pid):
+                merged["providerId"] = pid
+                break
         merged["mergedAt"] = datetime.now().isoformat()
         merged["mergedFrom"] = len(ordered)
         return merged, conflicts
@@ -250,21 +256,32 @@ class DuplicateMerger:
 
     def execute(self, plans: List[Dict], batch_size: int = 50):
         """グループごとに 1 トランザクション。残す側にまとめたプロパティを書き、APOC でつながりを寄せて消す。"""
+        # providerId には一意制約がある。残す側に書く前に、消える側の providerId を外しておく
+        # （2026-10-31 の実行で、残す側に無く消える側にだけある providerId を書こうとして 38 組目で止まった）
         query = """
+        MATCH (o:ServiceProvider) WHERE elementId(o) IN $others
+        REMOVE o.providerId
+        WITH collect(o) AS others
         MATCH (s:ServiceProvider) WHERE elementId(s) = $survivor
         SET s = $props
-        WITH s
-        MATCH (o:ServiceProvider) WHERE elementId(o) IN $others
-        WITH s, collect(o) AS others
+        WITH s, others
         CALL apoc.refactor.mergeNodes([s] + others, {properties: 'discard', mergeRels: true}) YIELD node
         RETURN elementId(node) AS eid
         """
         done = 0
         with self.driver.session() as session:
             for p in plans:
-                session.execute_write(
-                    lambda tx: tx.run(query, survivor=p["survivor"], others=p["others"], props=p["props"]).consume()
-                )
+                try:
+                    session.execute_write(
+                        lambda tx: tx.run(query, survivor=p["survivor"], others=p["others"], props=p["props"]).consume()
+                    )
+                except Exception as e:
+                    print(f"\n❌ {done + 1} 組目で止まりました（{done} 組はまとめ済み。この組は取り消されています）")
+                    print(f"   組: 事業所番号 {p['key'][0]} / ノード数 {len(p['others']) + 1}")
+                    print(f"   {type(e).__name__}: {e}")
+                    self.stats["executed_groups"] = done
+                    self.stats["failed_at"] = done + 1
+                    raise
                 done += 1
                 if done % batch_size == 0:
                     print(f"  まとめ済み: {done}/{len(plans)} 組")
@@ -298,6 +315,8 @@ class DuplicateMerger:
             lines += [f"| {k[9:]} | {s[k]} |" for k in conf_keys]
         if "executed_groups" in s:
             lines += ["", f"**実行済み: {s['executed_groups']} 組**"]
+        if "failed_at" in s:
+            lines += [f"**{s['failed_at']} 組目で止まった。直して流し直せば、まとめ済みの組は飛ばして続きから進む**"]
         return "\n".join(lines)
 
 
@@ -326,14 +345,18 @@ def main(argv=None):
         print(f"ServiceProvider: {len(nodes)} 件")
         plans = m.plan(nodes)
         label = "件数" if args.count else ("計画（dry-run）" if args.dry_run else "実行")
+        failed = False
         if args.execute:
-            m.execute(plans)
+            try:
+                m.execute(plans)
+            except Exception:
+                failed = True
         report = m.report(label)
         if args.output:
             Path(args.output).write_text(report, encoding="utf-8")
             print(f"📄 レポート: {args.output}")
         print("\n" + report)
-        return 0
+        return 1 if failed else 0
     finally:
         m.close()
 

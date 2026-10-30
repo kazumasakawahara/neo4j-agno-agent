@@ -154,3 +154,51 @@ def test_group_of_only_unjudged_nodes_uses_all(m):
         {"office_number": "1000000001"},
     ])
     assert "status" not in merged
+
+
+def test_merged_provider_id_prefers_new_form_in_group(m):
+    """残す側に providerId が無くても、組の中の新しい形の providerId を使う。"""
+    merged, _ = m.merge_properties([
+        {"wamnetId": "4016400030", "name": "x", "updatedAt": "2026-10-30"},      # 残す側（providerId なし）
+        {"providerId": "4016400030", "office_name": "x"},                        # 事業所番号だけ
+        {"providerId": "4016400030_11", "wamnetId": "4016400030"},               # 新しい形
+    ])
+    assert merged["providerId"] == "4016400030_11"
+
+
+def test_execute_removes_other_provider_ids_before_set(m):
+    """一意制約を避けるため、消える側の providerId を外してから残す側に書く（Cypher の順序を確かめる）。"""
+    import inspect
+    src = inspect.getsource(m.execute)
+    assert src.index("REMOVE o.providerId") < src.index("SET s = $props") < src.index("mergeNodes")
+
+
+def test_execute_reports_failed_group(m):
+    class Boom(Exception):
+        pass
+
+    class Session:
+        def __init__(self):
+            self.n = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def execute_write(self, fn):
+            self.n += 1
+            if self.n == 3:
+                raise Boom("constraint")
+
+    class Driver:
+        def session(self):
+            return Session()
+
+    m.driver = Driver()
+    plans = [{"key": (f"100000000{i}", "s"), "survivor": f"s{i}", "others": [f"o{i}"], "props": {}} for i in range(5)]
+    with pytest.raises(Boom):
+        m.execute(plans)
+    assert m.stats["executed_groups"] == 2 and m.stats["failed_at"] == 3
+    assert "3 組目で止まった" in m.report("試験")
