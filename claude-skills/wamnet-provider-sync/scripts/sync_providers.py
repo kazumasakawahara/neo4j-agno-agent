@@ -292,10 +292,12 @@ class ServiceProviderSync:
 
     @staticmethod
     def legacy_number(node: Dict) -> str:
-        """既存ノードの事業所番号。wamnetId を優先し、無ければ「事業所番号だけ」の形の providerId を使う。"""
-        wamnet_id = str(node.get("wamnetId") or "").strip()
-        if wamnet_id:
-            return wamnet_id
+        """既存ノードの事業所番号。wamnetId → レガシー名 office_number → 「事業所番号だけ」の形の providerId の順。
+        office_number は 2026-10-31 に足した（それまでこの形のノードは廃止・近郊外の判定を受けていなかった）。"""
+        for key in ("wamnetId", "office_number"):
+            value = str(node.get(key) or "").strip()
+            if value:
+                return value
         provider_id = str(node.get("providerId") or "").strip()
         return provider_id if re.fullmatch(r"\d{10}", provider_id) else ""
 
@@ -349,7 +351,8 @@ class ServiceProviderSync:
                 by_pid.setdefault(pid, key)
             number = self.legacy_number(node)
             if number:
-                by_number_service[(number, self.service_key(node.get("serviceType")))].append(key)
+                service = node.get("serviceType") or node.get("service_type")
+                by_number_service[(number, self.service_key(service))].append(key)
                 by_number[number].append(key)
 
         def update(provider, key, adopted):
@@ -419,7 +422,8 @@ class ServiceProviderSync:
         csv_keys = {(p["wamnetId"], self.service_key(p["serviceType"])) for p in unique.values()}
         for key in set(existing_providers.keys()) - claimed:
             node = existing_providers[key]
-            if (self.legacy_number(node), self.service_key(node.get("serviceType"))) in csv_keys:
+            service = node.get("serviceType") or node.get("service_type")
+            if (self.legacy_number(node), self.service_key(service)) in csv_keys:
                 claimed.add(key)
                 self.stats["hold_duplicate_nodes"] += 1
 

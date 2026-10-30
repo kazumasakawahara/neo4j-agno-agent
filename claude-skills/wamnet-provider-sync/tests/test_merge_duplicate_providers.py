@@ -124,3 +124,33 @@ def test_plan_counts(m, monkeypatch):
     assert m.stats["groups_moving_rels"] == 1  # d は残す側なので移す必要なし。b は消える側 → 移す
     report = m.report("試験")
     assert "| 重複の組 | 2 |" in report and "x" not in report.replace("dry-run", "")
+
+
+def test_unjudged_legacy_node_does_not_reopen_closed_group(m):
+    """2026-10-31 の dry-run で見つかった 10 組: Closed が付いたノードと、office_number しか持たず
+    取り込みスクリプトの判定を受けていない旧来ノードの組。旧来ノードに印が無いのは営業中だからではないので、
+    Closed を残す。"""
+    merged, conflicts = m.merge_properties([
+        {"providerId": "1000000001_11", "wamnetId": "1000000001", "status": "Closed", "closedAt": "x"},
+        {"providerId": "1000000001", "status": "Closed", "closedAt": "y"},
+        {"office_number": "1000000001", "office_name": "旧", "service_type": "居宅介護"},   # 判定外
+    ])
+    assert merged["status"] == "Closed" and merged["closedAt"] == "x"
+    assert "status" not in conflicts
+
+
+def test_judged_open_node_still_reopens(m):
+    """判定を受けたノードの 1 つでも Closed でなければ、営業中とみなす（元の規則はそのまま）。"""
+    merged, conflicts = m.merge_properties([
+        {"providerId": "1000000001_11", "wamnetId": "1000000001", "status": "Closed", "closedAt": "x"},
+        {"wamnetId": "1000000001", "name": "営業中"},
+    ])
+    assert "status" not in merged and conflicts["status"] == 1
+
+
+def test_group_of_only_unjudged_nodes_uses_all(m):
+    merged, _ = m.merge_properties([
+        {"office_number": "1000000001", "status": "Closed"},
+        {"office_number": "1000000001"},
+    ])
+    assert "status" not in merged

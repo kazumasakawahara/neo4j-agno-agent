@@ -203,3 +203,17 @@ def test_duplicate_twin_of_matched_node_is_held_not_closed(sync):
     assert sorted(closed) == ["gone", "other_service"]
     assert out == []
     assert "a_twin" not in [u["key"] for u in to_update] and "b_twin" not in [u["key"] for u in to_update]
+
+
+def test_legacy_office_number_nodes_are_judged(sync):
+    """office_number と service_type しか持たない旧来ノードも、事業所番号で突き合わせ、残れば廃止・近郊外の判定を受ける。"""
+    new = [sync._row_to_provider(_row("1000000001"))]
+    existing = {
+        "legacy": {"office_number": "1000000001", "office_name": "旧", "service_type": "居宅介護",
+                   "city": "北九州市小倉北区"},
+        "gone": {"office_number": "1000000009", "service_type": "居宅介護", "city": "北九州市小倉北区"},
+    }
+    _, to_update, closed, out = sync.detect_changes(new, existing)
+    assert [u["key"] for u in to_update] == ["legacy"]  # ID の付け替え
+    assert closed == ["gone"]
+    assert sync.stats["no_number"] == 0
