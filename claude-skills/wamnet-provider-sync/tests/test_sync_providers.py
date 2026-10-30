@@ -180,3 +180,26 @@ def test_csv_duplicate_rows_use_first_only(sync):
     row = sync._row_to_provider(_row("1000000001"))
     to_add, _, _, _ = sync.detect_changes([row, dict(row)], {})
     assert len(to_add) == 1 and sync.stats["csv_duplicate"] == 1
+
+
+def test_duplicate_twin_of_matched_node_is_held_not_closed(sync):
+    """providerId が一致した相手とは別に、同じ事業所番号・サービス種類のノードがあれば、廃止にせず保留にする
+    （2026-10-30 の2回目の dry-run で、廃止 987 件のうち 765 件がこれだった）。"""
+    new = [sync._row_to_provider(_row("1000000001")), sync._row_to_provider(_row("1000000002"))]
+    existing = {
+        "a": {"providerId": "1000000001_11", "wamnetId": "1000000001", "serviceType": "居宅介護",
+              "city": "北九州市小倉北区"},
+        "a_twin": {"wamnetId": "1000000001", "serviceType": "居宅介護", "city": "北九州市"},   # 片割れ
+        "b": {"providerId": "1000000002", "serviceType": "居宅介護", "city": "北九州市小倉北区"},
+        "b_twin": {"providerId": "1000000002_00", "wamnetId": "1000000002", "serviceType": "居宅介護",
+                   "city": "北九州市小倉北区"},  # b と2つで候補になる → 重複の候補（行ごと保留）
+        "gone": {"wamnetId": "1000000009", "serviceType": "居宅介護", "city": "北九州市小倉北区"},  # 本当に廃止
+        "other_service": {"wamnetId": "1000000001", "serviceType": "生活介護",
+                          "city": "北九州市小倉北区"},                                           # そのサービスは廃止
+    }
+    _, to_update, closed, out = sync.detect_changes(new, existing)
+    assert sync.stats["hold_duplicate_nodes"] == 1  # a_twin
+    assert sync.stats["hold_duplicate"] == 1        # b の行（b と b_twin）
+    assert sorted(closed) == ["gone", "other_service"]
+    assert out == []
+    assert "a_twin" not in [u["key"] for u in to_update] and "b_twin" not in [u["key"] for u in to_update]

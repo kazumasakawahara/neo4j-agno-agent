@@ -84,6 +84,7 @@ class ServiceProviderSync:
             "no_number": 0,
             "csv_duplicate": 0,
             "hold_duplicate": 0,
+            "hold_duplicate_nodes": 0,
             "hold_service_mismatch": 0,
             "unchanged": 0,
             "errors": 0
@@ -325,6 +326,8 @@ class ServiceProviderSync:
            2つ以上 → 重複の候補。新しい行は作らず、ノードにも触れない（保留）
         3. 事業所番号は一致するがサービス種類が一致しない → 保留（作らない・触れない）
         4. どれにも当たらない → 新規
+        1〜3 の後に残ったノードのうち、事業所番号とサービス種類が CSV のどれかの行と同じものは、
+        営業中の事業所の重複ノード（片割れ）として保留にし、廃止にしない。
 
         どの行にも当たらなかった既存ノードは、次に分ける。
         - 事業所番号が無い: 何もしない（手で登録したノードの可能性がある）
@@ -410,6 +413,15 @@ class ServiceProviderSync:
                 "serviceType": provider["serviceType"],
                 "city": provider["city"]
             })
+
+        # 重複の片割れ: 残ったノードのうち、事業所番号とサービス種類が CSV のどれかの行と同じものは、
+        # 営業中の事業所の重複ノードなので、廃止に回さず保留にする（後で別途まとめる）
+        csv_keys = {(p["wamnetId"], self.service_key(p["serviceType"])) for p in unique.values()}
+        for key in set(existing_providers.keys()) - claimed:
+            node = existing_providers[key]
+            if (self.legacy_number(node), self.service_key(node.get("serviceType"))) in csv_keys:
+                claimed.add(key)
+                self.stats["hold_duplicate_nodes"] += 1
 
         # 廃止・近郊外の検出
         area_cities = {p["city"] for p in new_providers if p.get("city")} | self.area_names
@@ -578,6 +590,7 @@ class ServiceProviderSync:
         report.append(f"| 📝 更新 | {self.stats['modified']}件 |")
         report.append(f"| 🔁 ID の付け替え（旧来の ID → 事業所番号_サービス種類コード） | {self.stats['adopted']}件 |")
         report.append(f"| ⏸️ 保留: 同じ事業所番号・サービス種類のノードが複数（重複の候補） | {self.stats['hold_duplicate']}件 |")
+        report.append(f"| ⏸️ 保留: 更新・付け替えの相手と同じ事業所番号・サービス種類の別ノード（重複の片割れ） | {self.stats['hold_duplicate_nodes']}件 |")
         report.append(f"| ⏸️ 保留: 事業所番号は一致、サービス種類が不一致 | {self.stats['hold_service_mismatch']}件 |")
         report.append(f"| ⚠️ 廃止 | {self.stats['closed']}件 |")
         report.append(f"| 🗺️ 近郊外（outOfArea を付ける） | {self.stats['out_of_area']}件 |")
