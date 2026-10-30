@@ -170,6 +170,12 @@ class DuplicateMerger:
         """先頭が残す側。"""
         return sorted(eids, key=lambda e: self.survivor_rank(nodes[e], rels.get(e, Counter())), reverse=True)
 
+    @staticmethod
+    def was_judged(node: Dict) -> bool:
+        """取り込みスクリプト（2026-10-30 の版）が廃止・近郊外の判定をしたノードか。
+        あの版は wamnetId か providerId からしか事業所番号を読まなかったので、office_number だけのノードは判定外。"""
+        return bool(str(node.get("wamnetId") or "").strip()) or bool(str(node.get("providerId") or "").strip())
+
     def merge_properties(self, ordered: List[Dict]) -> Tuple[Dict, Counter]:
         """残す側（ordered[0]）を土台に、空のところだけほかのノードから埋める。
         人が記録する値は「未確認」より入っている値を優先。status=Closed・outOfArea は全ノードに付いているときだけ残す。
@@ -189,15 +195,18 @@ class DuplicateMerger:
             values = [c.get(k) for c in cs if c.get(k) not in HUMAN_EMPTY]
             if values:
                 merged[k] = values[0]
-        # 廃止・近郊外の印は、全ノードに付いているときだけ残す。1 つでも付いていなければ営業中・近郊内とみなす
-        closed = [c.get("status") == "Closed" for c in cs]
+        # 廃止・近郊外の印は、判定を受けたノード全部に付いているときだけ残す。1 つでも付いていなければ営業中・近郊内とみなす。
+        # 判定を受けていないノード（取り込みスクリプトが事業所番号を読めなかった旧来ノード。2026-10-31 の dry-run で
+        # 10 組）は、印が無いのは「営業中だから」ではないので、数に入れない
+        judged = [c for c, n in zip(cs, ordered) if self.was_judged(n)] or cs
+        closed = [c.get("status") == "Closed" for c in judged]
         if not all(closed):
             if merged.get("status") == "Closed":
                 merged.pop("status")
             merged.pop("closedAt", None)
             if any(closed):
                 conflicts["status"] += 1
-        out_of_area = [bool(c.get("outOfArea")) for c in cs]
+        out_of_area = [bool(c.get("outOfArea")) for c in judged]
         if not all(out_of_area):
             merged.pop("outOfArea", None)
             merged.pop("outOfAreaAt", None)
