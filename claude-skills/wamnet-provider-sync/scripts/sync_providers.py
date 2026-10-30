@@ -15,7 +15,10 @@ import ast
 import csv
 import json
 import os
+import re
 import sys
+import unicodedata
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -74,9 +77,14 @@ class ServiceProviderSync:
         self.stats = {
             "new": 0,
             "modified": 0,
+            "adopted": 0,
             "closed": 0,
             "out_of_area": 0,
             "unknown_area": 0,
+            "no_number": 0,
+            "csv_duplicate": 0,
+            "hold_duplicate": 0,
+            "hold_service_mismatch": 0,
             "unchanged": 0,
             "errors": 0
         }
@@ -268,28 +276,32 @@ class ServiceProviderSync:
             prefecture: 都道府県でフィルタ（空の場合は全件）
         
         Returns:
-            providerId → プロパティのDict
+            ノードの elementId → プロパティのDict。providerId の無いノードも含める
+            （旧来の取り込みで providerId が無く wamnetId だけのノードがあるため）
+        """
+        where = "WHERE sp.prefecture CONTAINS $prefecture" if prefecture else ""
+        query = f"""
+        MATCH (sp:ServiceProvider)
+        {where}
+        RETURN elementId(sp) AS eid, properties(sp) AS props
         """
         with self.driver.session() as session:
-            if prefecture:
-                query = """
-                MATCH (sp:ServiceProvider)
-                WHERE sp.prefecture CONTAINS $prefecture
-                RETURN sp
-                """
-                result = session.run(query, prefecture=prefecture)
-            else:
-                query = "MATCH (sp:ServiceProvider) RETURN sp"
-                result = session.run(query)
-            
-            existing = {}
-            for record in result:
-                node = record["sp"]
-                provider_id = node.get("providerId")
-                if provider_id:
-                    existing[provider_id] = dict(node)
-            
-            return existing
+            result = session.run(query, prefecture=prefecture)
+            return {record["eid"]: dict(record["props"]) for record in result}
+
+    @staticmethod
+    def legacy_number(node: Dict) -> str:
+        """既存ノードの事業所番号。wamnetId を優先し、無ければ「事業所番号だけ」の形の providerId を使う。"""
+        wamnet_id = str(node.get("wamnetId") or "").strip()
+        if wamnet_id:
+            return wamnet_id
+        provider_id = str(node.get("providerId") or "").strip()
+        return provider_id if re.fullmatch(r"\d{10}", provider_id) else ""
+
+    def service_key(self, service_type: str) -> str:
+        """サービス種類の比較用の形。全角半角・記号の違い（自立訓練_機能訓練 / 自立訓練（機能訓練））を吸収する。"""
+        name = unicodedata.normalize("NFKC", self.normalize_service_type(str(service_type or "")))
+        return re.sub(r"[\s_()（）・]", "", name)
 
     def detect_changes(
         self, 
@@ -301,58 +313,116 @@ class ServiceProviderSync:
         
         Args:
             new_providers: 新しいデータ
-            existing_providers: 既存データ
+            existing_providers: 既存データ（ノードのキー → プロパティ）
         
         Returns:
-            (追加リスト, 更新リスト, 廃止IDリスト, 近郊外IDリスト)
+            (追加リスト, 更新リスト[{"key", "props"}], 廃止キーリスト, 近郊外キーリスト)
 
-        新しいデータに無い既存の事業所は、次の3つに分ける。
-        - 廃止: 市区町村が新しいデータの対象地域に入る（その地域から消えた）
+        既存ノードとの突き合わせは次の順に行う。
+        1. providerId（事業所番号_サービス種類コード）が一致
+        2. 事業所番号（wamnetId、または「事業所番号だけ」の providerId）とサービス種類が一致するノードが1つ
+           → そのノードの providerId を新しい形に付け替える（ID の付け替え）
+           2つ以上 → 重複の候補。新しい行は作らず、ノードにも触れない（保留）
+        3. 事業所番号は一致するがサービス種類が一致しない → 保留（作らない・触れない）
+        4. どれにも当たらない → 新規
+
+        どの行にも当たらなかった既存ノードは、次に分ける。
+        - 事業所番号が無い: 何もしない（手で登録したノードの可能性がある）
+        - 廃止: 市区町村が対象地域に入る（その地域から消えた）
         - 近郊外: 市区町村が対象地域に入らない（旧版のダウンローダーが拾った近郊外の事業所など）
         - 判定不能: 市区町村が空。何もせず件数だけ数える
         対象地域は、新しいデータに出てくる市区町村と、wamnet_downloader.py の KITAKYUSHU_AREAS の市区町村を合わせたもの。
         """
         to_add = []
         to_update = []
-        
-        new_ids = set()
-        
-        for provider in new_providers:
-            provider_id = provider["providerId"]
-            new_ids.add(provider_id)
-            
-            if provider_id not in existing_providers:
-                # 新規
-                to_add.append(provider)
-                self.stats["new"] += 1
-                self.changes["new"].append({
-                    "name": provider["name"],
-                    "serviceType": provider["serviceType"],
-                    "city": provider["city"]
-                })
-            else:
-                # 既存との比較
-                existing = existing_providers[provider_id]
-                if self._is_modified(provider, existing):
-                    to_update.append(provider)
-                    self.stats["modified"] += 1
+        claimed = set()
+
+        by_pid = {}
+        by_number_service = defaultdict(list)
+        by_number = defaultdict(list)
+        for key, node in existing_providers.items():
+            pid = str(node.get("providerId") or "").strip()
+            if pid:
+                by_pid.setdefault(pid, key)
+            number = self.legacy_number(node)
+            if number:
+                by_number_service[(number, self.service_key(node.get("serviceType")))].append(key)
+                by_number[number].append(key)
+
+        def update(provider, key, adopted):
+            claimed.add(key)
+            existing = existing_providers[key]
+            if adopted or self._is_modified(provider, existing):
+                # availability（空き状況）は人が記録する値なので、既存ノードでは上書きしない
+                props = {k: v for k, v in provider.items() if k != "availability"}
+                to_update.append({"key": key, "props": props})
+                self.stats["adopted" if adopted else "modified"] += 1
+                if not adopted:
                     self.changes["modified"].append({
                         "name": provider["name"],
                         "serviceType": provider["serviceType"],
                         "changes": self._get_diff(provider, existing)
                     })
-                else:
-                    self.stats["unchanged"] += 1
-        
+            else:
+                self.stats["unchanged"] += 1
+
+        # CSV の中で providerId が重なる行は最初の1行だけ使う（ID の付け替えで同じ providerId を2つ作らないため）
+        unique = {}
+        for provider in new_providers:
+            unique.setdefault(provider["providerId"], provider)
+        self.stats["csv_duplicate"] = len(new_providers) - len(unique)
+
+        # 1. providerId が一致
+        rest = []
+        for provider in unique.values():
+            key = by_pid.get(provider["providerId"])
+            if key is not None and key not in claimed:
+                update(provider, key, adopted=False)
+            else:
+                rest.append(provider)
+
+        # 2. 事業所番号＋サービス種類が一致
+        rest2 = []
+        for provider in rest:
+            candidates = [
+                k for k in by_number_service[(provider["wamnetId"], self.service_key(provider["serviceType"]))]
+                if k not in claimed
+            ]
+            if len(candidates) == 1:
+                update(provider, candidates[0], adopted=True)
+            elif len(candidates) > 1:
+                claimed.update(candidates)
+                self.stats["hold_duplicate"] += 1
+            else:
+                rest2.append(provider)
+
+        # 3. 事業所番号だけ一致 → 保留、4. 新規
+        for provider in rest2:
+            others = [k for k in by_number[provider["wamnetId"]] if k not in claimed]
+            if others:
+                claimed.update(others)
+                self.stats["hold_service_mismatch"] += 1
+                continue
+            to_add.append(provider)
+            self.stats["new"] += 1
+            self.changes["new"].append({
+                "name": provider["name"],
+                "serviceType": provider["serviceType"],
+                "city": provider["city"]
+            })
+
         # 廃止・近郊外の検出
         area_cities = {p["city"] for p in new_providers if p.get("city")} | self.area_names
         closed_ids = []
         out_of_area_ids = []
-        for missing_id in sorted(set(existing_providers.keys()) - new_ids):
-            existing = existing_providers[missing_id]
+        for key in sorted(set(existing_providers.keys()) - claimed):
+            existing = existing_providers[key]
+            if not self.legacy_number(existing) and not existing.get("providerId"):
+                self.stats["no_number"] += 1
+                continue
             _, city = self.split_prefecture(str(existing.get("city") or "").strip())
             entry = {
-                "providerId": missing_id,
+                "providerId": existing.get("providerId", ""),
                 "name": existing.get("name", ""),
                 "serviceType": existing.get("serviceType", ""),
                 "city": city,
@@ -360,10 +430,10 @@ class ServiceProviderSync:
             if not city:
                 self.stats["unknown_area"] += 1
             elif self.in_area(city, area_cities):
-                closed_ids.append(missing_id)
+                closed_ids.append(key)
                 self.changes["closed"].append(entry)
             else:
-                out_of_area_ids.append(missing_id)
+                out_of_area_ids.append(key)
                 self.changes["out_of_area"].append(entry)
         self.stats["closed"] = len(closed_ids)
         self.stats["out_of_area"] = len(out_of_area_ids)
@@ -399,7 +469,7 @@ class ServiceProviderSync:
         """廃止・近郊外の事業所を利用中のクライアントの人数を数える（氏名は読まない）"""
         query = """
         MATCH (c:Client)-[r:USES_SERVICE]->(sp:ServiceProvider)
-        WHERE sp.providerId IN $ids
+        WHERE elementId(sp) IN $ids
           AND r.status = 'Active'
         RETURN count(DISTINCT c) AS n
         """
@@ -422,8 +492,8 @@ class ServiceProviderSync:
         Args:
             to_add: 追加するデータ
             to_update: 更新するデータ
-            closed_ids: 廃止としてマークするID
-            out_of_area_ids: 近郊外としてマークするID（status は変えない）
+            closed_ids: 廃止としてマークするノードのキー（elementId）
+            out_of_area_ids: 近郊外としてマークするノードのキー（elementId。status は変えない）
             batch_size: バッチサイズ
         """
         if self.dry_run:
@@ -465,9 +535,9 @@ class ServiceProviderSync:
     def _batch_update(self, session, providers: List[Dict]):
         """バッチで更新"""
         query = """
-        UNWIND $providers AS p
-        MATCH (sp:ServiceProvider {providerId: p.providerId})
-        SET sp += p
+        UNWIND $providers AS row
+        MATCH (sp:ServiceProvider) WHERE elementId(sp) = row.key
+        SET sp += row.props
         REMOVE sp.outOfArea, sp.outOfAreaAt
         """
         session.run(query, providers=providers)
@@ -476,7 +546,7 @@ class ServiceProviderSync:
         """廃止としてマーク"""
         query = """
         MATCH (sp:ServiceProvider)
-        WHERE sp.providerId IN $closed_ids
+        WHERE elementId(sp) IN $closed_ids
         SET sp.status = 'Closed',
             sp.closedAt = datetime()
         """
@@ -486,7 +556,7 @@ class ServiceProviderSync:
         """近郊外としてマーク。消さずに残し、利用者とのつながりも保つ。"""
         query = """
         MATCH (sp:ServiceProvider)
-        WHERE sp.providerId IN $ids
+        WHERE elementId(sp) IN $ids
         SET sp.outOfArea = true,
             sp.outOfAreaAt = datetime()
         """
@@ -506,9 +576,14 @@ class ServiceProviderSync:
         report.append("|---------|------|")
         report.append(f"| 🆕 新規登録 | {self.stats['new']}件 |")
         report.append(f"| 📝 更新 | {self.stats['modified']}件 |")
+        report.append(f"| 🔁 ID の付け替え（旧来の ID → 事業所番号_サービス種類コード） | {self.stats['adopted']}件 |")
+        report.append(f"| ⏸️ 保留: 同じ事業所番号・サービス種類のノードが複数（重複の候補） | {self.stats['hold_duplicate']}件 |")
+        report.append(f"| ⏸️ 保留: 事業所番号は一致、サービス種類が不一致 | {self.stats['hold_service_mismatch']}件 |")
         report.append(f"| ⚠️ 廃止 | {self.stats['closed']}件 |")
         report.append(f"| 🗺️ 近郊外（outOfArea を付ける） | {self.stats['out_of_area']}件 |")
         report.append(f"| ❔ 市区町村が空で判定不能（何もしない） | {self.stats['unknown_area']}件 |")
+        report.append(f"| ➖ 事業所番号が無いノード（何もしない） | {self.stats['no_number']}件 |")
+        report.append(f"| ➖ CSV の中で providerId が重なった行（2行目以降は使わない） | {self.stats['csv_duplicate']}件 |")
         report.append(f"| ✅ 変更なし | {self.stats['unchanged']}件 |")
         report.append("")
         

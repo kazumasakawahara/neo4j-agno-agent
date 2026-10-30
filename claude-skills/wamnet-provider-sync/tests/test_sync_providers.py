@@ -110,3 +110,73 @@ def test_detect_changes_without_area_table_uses_data_only(sync):
     new = [sync._row_to_provider({**WAMNET_ROW, "事業所番号": "A"})]
     _, _, closed, out = sync.detect_changes(new, {"C_11": _existing("C_11", "北九州市八幡西区")})
     assert (closed, out) == ([], ["C_11"])  # 表が無いと、データに出ない地域は近郊外に見える
+
+
+# ---- 旧来の ID のノードとの突き合わせ（2026-10-30 の既存 4213 件の内訳に合わせた）----
+
+
+def _row(number, service_code="11", service="居宅介護", city="福岡県北九州市小倉北区"):
+    return {**WAMNET_ROW, "事業所番号": number, "サービス種類コード": service_code, "サービス種類": service,
+            "事業所住所（市区町村）": city}
+
+
+def test_legacy_nodes_are_adopted_not_duplicated(sync):
+    new = [sync._row_to_provider(_row(n)) for n in ("1000000001", "1000000002", "1000000003", "1000000004")]
+    existing = {
+        "e1": {"providerId": "1000000001", "serviceType": "居宅介護", "city": "北九州市小倉北区"},  # 事業所番号だけ・wamnetId なし
+        "e2": {"wamnetId": "1000000002", "serviceType": "居宅介護", "city": "北九州市小倉北区",      # providerId なし
+               "availability": "空きあり"},
+        "e3": {"providerId": "1000000003_00", "wamnetId": "1000000003", "serviceType": "居宅介護"},  # 旧スクリプトのコード
+        "e4": {"providerId": "1000000004_11", "wamnetId": "1000000004", "serviceType": "居宅介護",
+               "name": "テスト事業所", "address": "1-2-3", "city": "北九州市小倉北区", "phone": "093-000-0000",
+               "capacity": 20},
+    }
+    to_add, to_update, closed, out = sync.detect_changes(new, existing)
+    assert to_add == []
+    assert sorted(u["key"] for u in to_update) == ["e1", "e2", "e3"]
+    assert sync.stats["adopted"] == 3 and sync.stats["unchanged"] == 1
+    props = {u["key"]: u["props"] for u in to_update}
+    assert props["e1"]["providerId"] == "1000000001_11"
+    assert "availability" not in props["e2"]  # 人が記録した空き状況を上書きしない
+    assert (closed, out) == ([], [])
+
+
+def test_service_type_spelling_differences_still_match(sync):
+    new = [sync._row_to_provider(_row("1000000001", "41", "自立訓練_機能訓練"))]
+    existing = {"e1": {"wamnetId": "1000000001", "serviceType": "自立訓練（機能訓練）"}}
+    _, to_update, _, _ = sync.detect_changes(new, existing)
+    assert [u["key"] for u in to_update] == ["e1"]
+
+
+def test_duplicates_and_service_mismatch_are_held(sync):
+    new = [sync._row_to_provider(_row("1000000001")), sync._row_to_provider(_row("1000000002"))]
+    existing = {
+        "d1": {"wamnetId": "1000000001", "serviceType": "居宅介護", "city": "北九州市"},
+        "d2": {"providerId": "1000000001", "serviceType": "居宅介護", "city": "福岡県北九州市小倉北区"},
+        "m1": {"wamnetId": "1000000002", "serviceType": "生活介護", "city": "北九州市小倉北区"},
+    }
+    to_add, to_update, closed, out = sync.detect_changes(new, existing)
+    assert (to_add, to_update, closed, out) == ([], [], [], [])  # 作らない・触れない
+    assert sync.stats["hold_duplicate"] == 1
+    assert sync.stats["hold_service_mismatch"] == 1
+
+
+def test_nodes_without_any_number_are_left_alone(sync):
+    new = [sync._row_to_provider(_row("1000000001"))]
+    existing = {"x": {"name": "手で登録した事業所", "city": "北九州市小倉北区"}}
+    _, _, closed, out = sync.detect_changes(new, existing)
+    assert (closed, out) == ([], [])
+    assert sync.stats["no_number"] == 1
+
+
+def test_legacy_out_of_area_nodes_are_marked(sync):
+    new = [sync._row_to_provider(_row("1000000001"))]
+    existing = {"k": {"wamnetId": "2000000001", "serviceType": "居宅介護", "city": "福岡県久留米市"}}
+    _, _, closed, out = sync.detect_changes(new, existing)
+    assert (closed, out) == ([], ["k"])
+
+
+def test_csv_duplicate_rows_use_first_only(sync):
+    row = sync._row_to_provider(_row("1000000001"))
+    to_add, _, _, _ = sync.detect_changes([row, dict(row)], {})
+    assert len(to_add) == 1 and sync.stats["csv_duplicate"] == 1
