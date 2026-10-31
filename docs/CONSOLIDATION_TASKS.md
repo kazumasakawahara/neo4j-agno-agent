@@ -147,3 +147,30 @@ grep -rln "neo4j-agno-agent" ~/.claude/projects 2>/dev/null | head -5
 - K の結果 → 法令を共有層に置くときのラベル・リレーションの設計案と、取り込み手順を出す。取り込むかは河原さんが決める。
 - L の結果 → 参照されていないコードを `archive/` に退避し、`CLAUDE.md`・`README.md` を「共有層のリポジトリ」として書き直す案をプルリクエストにする。
   skills のリンクが neo4j-agno-agent を向いていれば、nest-support 側へ張り替える手順も添える。
+
+---
+
+## 作業 M：退避の後始末（neo4j-agno-agent の個人層コードを archive/ に移した後）
+
+クラウドのセッションが neo4j-agno-agent の個人層コードを `archive/personal-layer-2026-10/` に退避し、CLAUDE.md・README を
+共有層のリポジトリとして書き直した（2026-10-31）。Mac で次を行う。
+
+1. `cd ~/Dev-Work/neo4j-agno-agent && git checkout main && git pull`
+2. `~/.claude/skills/narrative-intake` のリンクを外す（nest-support の `narrative-extractor` に一本化）。
+   ```bash
+   ls -la ~/.claude/skills/narrative-intake      # リンク先が neo4j-agno-agent であることを確かめてから
+   rm ~/.claude/skills/narrative-intake
+   ls -la ~/.claude/skills/ | grep -c nest-support   # 残りが全部 nest-support を向いていること
+   ```
+3. nest-support の `scripts/doctor.sh` を流し、Skills のリンクの項目が通ることを確かめる。
+4. 共有層が今までどおり動くことを確かめる（読み取り専用）。
+   ```bash
+   set -a; source ~/.config/nest/neo4j.env; set +a
+   docker compose up -d neo4j && sleep 20
+   uv run --with neo4j python scripts/db_inventory.py --uri bolt://localhost:7687 --name support-db-neo4j | head -8
+   (cd claude-skills/wamnet-provider-sync && uv run --with pytest --with neo4j --with python-dotenv pytest tests -q)
+   uv run --with pytest --with pandas --with requests pytest -q WAM-NET/test_area_codes.py
+   docker compose stop
+   ```
+   ServiceProvider 3032・試験がすべて通れば、退避で共有層は壊れていない。
+5. 報告: リンクを外したこと、doctor.sh の結果、4 の件数と試験の結果。
