@@ -2,6 +2,7 @@
 
 > 2026-09-04 作成。環境まわりの申し送りのみ。作業履歴は git log と CLAUDE.md / README.md を参照。
 > このリポジトリの `docker-compose.yml`（container_name: support-db-neo4j）も `NEO4J_AUTH` を `${NEO4J_USERNAME:?}/${NEO4J_PASSWORD:?}` 展開に変更済み（2026-09-04）。稼働中の DB は oya-inai-db-neo4j / nest-support-neo4j（いずれも 7474/7687）なので、ここから起動するとポートが衝突する。
+> **2026-10-31 追記**: 上の 1 行は古い。oya-inai-db は閉じ、nest-support は 7688/7475 に移したので、ここから support-db-neo4j（7687）を起動して衝突しない。現状は `docs/DB_REGISTRY.md`。
 
 ## Neo4j 認証の置き場（2026-09-04）
 
