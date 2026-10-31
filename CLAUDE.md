@@ -4,6 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
+> **2026-10-31 の整理（必読）**: Mac の Neo4j は 2 層に分けた。**このリポジトリの Docker DB（support-db-neo4j, port 7687）は共有層**で、
+> ServiceProvider（WAM NET の事業所）だけを持つ。**利用者・家族の個人データは個人層 nest-support（port 7688）**にある。
+> このリポジトリの api/・frontend/・lib/ など個人データを書くコードを 7687 に向けて動かさないこと。
+> 台帳は `docs/DB_REGISTRY.md`。WAM NET の更新手順は `WAM-NET/MAC_TASKS.md`。
+
 **親亡き後支援データベース (Post-Parent Support & Advocacy Graph)**
 
 A Neo4j-based graph database system for managing support information for individuals with intellectual/developmental disabilities, designed to preserve parental tacit knowledge for emergency situations and post-parent care continuity.
@@ -97,9 +102,9 @@ cd frontend && pnpm dev --port 3001
    - `base.py`, `unified_support_agent.py`: Agno/Gemini agent (used by app_ui.py)
 
 7. **Skills** (`claude-skills/` → `~/.claude/skills/` via symlink):
-   - `neo4j-support-db/`: 障害福祉DB用Cypherテンプレート（8種、port 7687）
-   - `livelihood-support/`: 生活困窮者DB用Cypherテンプレート（12種、port 7688）
-   - `provider-search/`: 事業所検索・口コミ用Cypherテンプレート（9種、port 7687）
+   - `neo4j-support-db/`: 障害福祉DB用Cypherテンプレート（8種、個人層 port 7688 = MCP `neo4j`）
+   - `livelihood-support/`: 生活困窮者DB用（断念。2026-10-31 に 7688 番を nest-support に譲った。使わない）
+   - `provider-search/`: 事業所検索・口コミ用Cypherテンプレート（9種、共有層 port 7687 = MCP `neo4j-shared`）
    - `emergency-protocol/`: 緊急時対応プロトコル（DB非依存）
    - `ecomap-generator/`: エコマップ生成（Mermaid/SVG）
    - `narrative-intake/`: 長文ナラティブ → 構造化グラフJSON → `/api/narrative/intake` 書き込み（日本語最適化・4フェーズプロトコル、port 8001 経由）
@@ -223,14 +228,14 @@ result = run_query("MATCH (c:Client) RETURN c.name LIMIT 10")
 
 Six skills provide Cypher templates (read via neo4j MCP) or narrative ingestion (write via FastAPI):
 
-| Skill | Neo4j Port | Templates | Purpose |
+| Skill | Neo4j（層 / port / MCP） | Templates | Purpose |
 |-------|-----------|-----------|---------|
-| neo4j-support-db | 7687 | 10 read | 障害福祉クライアント管理 |
-| livelihood-support | 7688 | 12 read | 生活困窮者自立支援 |
-| provider-search | 7687 | 6 read + 3 write | 事業所検索・口コミ |
+| neo4j-support-db | 個人層 / 7688 / `neo4j` | 10 read | 障害福祉クライアント管理 |
+| livelihood-support | （断念。使わない） | 12 read | 生活困窮者自立支援 |
+| provider-search | 共有層 / 7687 / `neo4j-shared` | 6 read + 3 write | 事業所検索・口コミ |
 | emergency-protocol | N/A | N/A | 緊急時プロトコル |
 | ecomap-generator | N/A | N/A | エコマップ生成 |
-| narrative-intake | 7687 (via API 8001) | 4-phase write | 長文ナラティブ → 構造化グラフ書き込み（日本語最適化・安全性二重検証・sourceHash冪等性） |
+| narrative-intake | 個人層 / 7688 (via API 8001。API を 7688 に向けること) | 4-phase write | 長文ナラティブ → 構造化グラフ書き込み（日本語最適化・安全性二重検証・sourceHash冪等性） |
 
 **narrative-intake の位置づけ（Layer 3 書き込みチャネル）:**
 Layer 1/2 の Streamlit/Next.js フォームで細切れに入力する代わりに、Claude Desktop 単独で長文narrative
@@ -284,7 +289,7 @@ All Neo4j write paths apply consistent normalization:
 - `:Certificate`: 手帳・受給者証 with `nextRenewalDate`. MERGE key: `["type", "grade"]` (e.g., 療育手帳 A and 療育手帳 B are separate nodes; `grade` defaults to `"不明"` if unspecified)
 - `:PublicAssistance`: 公的扶助
 
-**Financial Safety** (livelihood-support, port 7688):
+**Financial Safety** (livelihood-support。断念したスキルのモデル。参考のみ):
 - `:EconomicRisk`: Economic exploitation risks
 - `:MoneyManagement`: Financial management capability records
 
@@ -355,9 +360,9 @@ neo4j-agno-agent/
 │       ├── __init__.py
 │       └── drawio_engine.py
 ├── claude-skills/          # Claude Desktop Skills (bundled)
-│   ├── neo4j-support-db/   # 障害福祉DB (4-pillar, port 7687)
-│   ├── livelihood-support/ # 生活困窮者DB (7-pillar, port 7688)
-│   ├── provider-search/    # 事業所検索・口コミ (port 7687)
+│   ├── neo4j-support-db/   # 障害福祉DB (4-pillar, 個人層 port 7688)
+│   ├── livelihood-support/ # 生活困窮者DB (断念。使わない)
+│   ├── provider-search/    # 事業所検索・口コミ (共有層 port 7687)
 │   ├── emergency-protocol/ # 緊急時対応プロトコル (read-only)
 │   ├── ecomap-generator/   # エコマップ生成 (Mermaid/SVG)
 │   └── narrative-intake/   # 長文ナラティブ→Neo4j書き込み (via API 8001, 日本語最適化)

@@ -9,8 +9,10 @@ description: 福祉サービス事業所の検索・管理・口コミ評価を�
 福祉サービス事業所の検索・管理・口コミ評価を行うスキル。WAM NETから取得した事業所情報（ServiceProvider）と支援者による口コミ（ProviderFeedback）をNeo4jグラフデータベースで管理する。
 
 ## 対象Neo4jインスタンス
-- **support-db**: `bolt://localhost:7687`（HTTP: 7474）
-- neo4j MCPの `read_neo4j_cypher` / `write_neo4j_cypher` を使用
+- **共有層 support-db-neo4j**: `bolt://localhost:7687`（HTTP: 7474）。ServiceProvider と ProviderFeedback だけを持つ（2026-10-31〜）
+- **MCP は `neo4j-shared`** の `read_neo4j_cypher` / `write_neo4j_cypher` を使う。`neo4j`（個人層 7688）には ServiceProvider が無い
+- 利用者との紐付け（テンプレート7）は個人層の Client と共有層の ServiceProvider をまたぐため、Neo4j 単体では結べない。
+  個人層側に `USES_SERVICE` の相手として `wamnetId` を持たせ、事業所名は `neo4j-shared` で引く（台帳 `docs/DB_REGISTRY.md`）
 
 ## データモデル
 

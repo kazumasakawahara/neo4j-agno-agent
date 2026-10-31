@@ -405,6 +405,8 @@ WAM NETの次回更新は **2025年10月頃** の予定です。
 ### Q4: Neo4j接続エラー
 
 **A**: 環境変数（NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD）が正しく設定されているか確認してください。
+書き込み先は**共有層 support-db-neo4j（port 7687）**で、接続情報は `~/.config/nest/neo4j.env`（`set -a; source ~/.config/nest/neo4j.env; set +a`）。
+個人層 nest-support（7688、`neo4j-personal.env`）には ServiceProvider を書かないこと（台帳 `docs/DB_REGISTRY.md`）。
 
 ---
 
