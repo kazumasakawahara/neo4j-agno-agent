@@ -1,33 +1,24 @@
 [project]
 name = "neo4j-agno-agent"
-version = "1.0.0"
-description = "親亡き後支援データベース - Neo4j + Next.js + FastAPI + Multi-LLM (Gemini/Claude/Ollama)"
+version = "2.0.0"
+description = "福祉の共有層（事業所・行政・制度）の Neo4j — WAM NET の取得・取り込み・棚卸し"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "agno>=2.3.12",
-    "anthropic>=0.40.0",
-    "duckduckgo-search>=8.1.1",
-    "fastapi>=0.115.0",
-    "google-genai>=1.55.0",
-    "google-generativeai>=0.8.5",
-    "httpx>=0.27.0",
-    "mcp[cli]>=1.24.0",
-    "neo4j>=6.0.3",
-    "ollama>=0.6.1",
-    "openpyxl>=3.1.0",
-    "pdfplumber>=0.11.0",
-    "pydantic>=2.12.5",
-    "pykakasi>=2.3.0",
-    "python-docx>=1.1.0",
-    "python-dotenv>=1.2.1",
-    "reportlab>=4.4.9",
-    "streamlit>=1.33.0",
-    "uvicorn>=0.32.0",
-    "weasyprint>=67.0",
+    "neo4j>=5.15",
+    "pandas>=2.2",
+    "requests>=2.32",
+    "python-dotenv>=1.0",
 ]
 
-[tool.uv.workspace]
-members = [
-    "api",
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "openpyxl>=3.1",
 ]
+
+# 2026-10-31: 個人層のアプリ（api/・frontend/・lib/ ほか）は archive/personal-layer-2026-10/ に退避した。
+# 旧 pyproject（agno・fastapi・streamlit など）と uv.lock・requirements.lock・Dockerfile も同フォルダにある。
+# このファイルはパッケージを作らない。`uv run --with ...` でも、`uv sync` してからの `uv run` でも動く。
+[tool.uv]
+package = false

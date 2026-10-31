@@ -24,6 +24,7 @@ Mac の Neo4j は 2 層に分けた。台帳は `docs/DB_REGISTRY.md`。
 ```
 neo4j-agno-agent/
 ├── docker-compose.yml          # 共有層 Neo4j（support-db-neo4j、7687）。NEO4J_AUTH は neo4j.env から
+├── pyproject.toml / uv.lock    # neo4j・pandas・requests・python-dotenv だけ（dev: pytest・openpyxl）。パッケージは作らない
 ├── WAM-NET/                    # WAM NET 事業所データの取得（半年ごと）
 │   ├── wamnet_downloader.py    #   公開済みの最新を自動で探し、北九州市近郊を所在地で絞り込む
 │   ├── count_area_mismatch.py  #   近郊外の混入を件数だけ数える
