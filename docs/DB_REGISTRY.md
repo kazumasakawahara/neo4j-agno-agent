@@ -26,7 +26,7 @@ support-db-neo4j  bolt://localhost:7687      nest-support-neo4j  bolt://localhos
 |---|---|---|---|---|---|---|
 | support-db-neo4j | 共有 | Docker（neo4j-agno-agent の docker-compose） | 7687 / 7474 | `~/.config/nest/neo4j.env` | kazumasakawahara/neo4j-agno-agent | ServiceProvider 3032（Closed 126・outOfArea 601）。ほかのラベルは 0 |
 | nest-support-neo4j | 個人 | Docker（nest-support の docker-compose） | 7688 / 7475 | `~/.config/nest/neo4j-personal.env` | kazumasakawahara/nest-support | Client 6（イニシャルの 1 件以外はダミー）ほか 137 ノード |
-| law-graph-db | **独立した実験**（共有層には取り込まない。2026-10-31 決定） | Docker（~/Projects/legal-db） | 7692 | `~/Projects/legal-db/.env` | legal-db（ローカル） | 民法総則の条文構造 282 ノード（条 98・項 62 ほか）と要件事実の関係（法概念 65・法理 13）。個人情報なし。弁護士としての研究課題で、福祉の共有層とは別に置く |
+| law-graph-db | **独立した実験**（共有層には取り込まない。2026-10-31 決定） | Docker（~/Projects/legal-db） | 7692 | `~/Projects/legal-db/.env` | legal-db（ローカル、git 管理外） | 民法（明治 29 年法律第 89 号、ラベル `Statute`）総則の条文構造 282 ノード（条 98・項 62 ほか）と要件事実の関係（法概念 65・法理 13）。個人情報なし。弁護士としての研究課題で、福祉の共有層とは別に置く |
 
 パスワードは 2026-10-31 に層ごとに別の値へ変えた。リポジトリに書かない（`.mcp.json`・`configs/*.json` は env ファイルを読む形）。
 
@@ -73,8 +73,15 @@ Claude Desktop の設定と nest-support の `.mcp.json` に両方を登録済�
   law-graph-db のデータは移さず新しく入れる。
 - 時期と設計は未定。着手するときは、ラベル・リレーション名を `docs/NEO4J_SCHEMA_CONVENTION.md` に足してから取り込む。
 
+## 個人層のコードの一本化（2026-10-31 決定・実施）
+
+- 利用者・家族のアプリとスキルは **nest-support に一本化**。neo4j-agno-agent にあった api/・frontend/・lib/・sos/・mobile/・skills/・agents/・
+  個人層のスキル（neo4j-support-db・narrative-intake・ecomap-generator ほか）は `archive/personal-layer-2026-10/` に退避した。
+- Mac の `~/.claude/skills/` は narrative-intake 以外すべて nest-support を向いていた。narrative-intake のリンクは外し、
+  nest-support の narrative-extractor に一本化する（`docs/CONSOLIDATION_TASKS.md` 作業 M）。
+- legal-db にあった WAM NET の旧い月次書き込み処理（`com.kawahara.wamnet-supplement.plist`）は 2026-10-31 に `launchctl unload` で止めた。
+  plist は残してある。共有層への書き込みは `WAM-NET/MAC_TASKS.md` の手順だけ。
+
 ## 決まっていないこと
 
-- neo4j-agno-agent に残っている個人層のコード（api/・frontend/・lib/・claude-skills/neo4j-support-db など）を、
-  nest-support に一本化してこちらから外すか。今は **このリポジトリのアプリを 7687 に向けて動かさない**こと
-  （共有層に個人データを書いてしまう）。
+- legal-db の README に law-graph-db のパスワードが平文で書かれている（git 管理外）。次に law-graph-db を触るときに変える。
