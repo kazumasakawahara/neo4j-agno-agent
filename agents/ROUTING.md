@@ -14,7 +14,7 @@
 ### 1. neo4j-support-db（計画相談支援）
 
 **SKILL.md:** `~/.claude/skills/neo4j-support-db/SKILL.md`
-**Neo4jインスタンス:** `bolt://localhost:7687`
+**Neo4jインスタンス:** 個人層 nest-support `bolt://localhost:7688`（MCP `neo4j`）
 **対象業務:** 障害福祉サービスの利用調整、計画相談支援
 
 **トリガーワード:**
@@ -41,7 +41,7 @@
 ### 2. livelihood-support（生活困窮者自立支援）
 
 **SKILL.md:** `~/.claude/skills/livelihood-support/SKILL.md`
-**Neo4jインスタンス:** `bolt://localhost:7688`
+**Neo4jインスタンス:** なし（2026-10-31 に断念。7688 番は nest-support に譲った。このスキルは使わない）
 **対象業務:** 生活保護受給者の自立支援、経済的搾取防止、金銭管理支援
 
 **トリガーワード:**
@@ -74,7 +74,7 @@
 ### 3. provider-search（事業所検索・管理）
 
 **SKILL.md:** `~/.claude/skills/provider-search/SKILL.md`
-**Neo4jインスタンス:** `bolt://localhost:7687`（support-dbと同じ）
+**Neo4jインスタンス:** 共有層 support-db-neo4j `bolt://localhost:7687`（MCP `neo4j-shared`）
 **対象業務:** 福祉サービス事業所の検索・利用管理・口コミ評価
 
 **トリガーワード:**
@@ -163,7 +163,7 @@
 
 ### 7. neo4j MCP（汎用データベースアクセス）
 
-**接続先:** `bolt://localhost:7687`（デフォルト）
+**接続先:** `neo4j` = 個人層 `bolt://localhost:7688`、`neo4j-shared` = 共有層 `bolt://localhost:7687`（2026-10-31〜）
 
 **ツール:**
 
@@ -197,10 +197,8 @@
 │          Phase 4: /api/narrative/intake で書き込み＋embedding付与
 │
 ├─ クライアント/受給者名が含まれる？
-│  ├─ YES → どちらのDBに登録されているか確認
-│  │       ├─ support-db（port 7687）→ neo4j-support-db スキル
-│  │       ├─ livelihood-support（port 7688）→ livelihood-support スキル
-│  │       └─ 不明 → 両方のテンプレート1（一覧）で確認
+│  ├─ YES → 個人層 nest-support（port 7688、MCP `neo4j`）→ neo4j-support-db スキル
+│  │       （事業所名を出すときは共有層 MCP `neo4j-shared` で wamnetId から引く）
 │  └─ NO → 続行
 │
 ├─ 経済リスク・金銭管理・搾取に関する話題？
@@ -226,14 +224,14 @@
 
 ## Neo4jインスタンスの使い分け
 
-2つの別インスタンスが稼働している。クエリ実行時は接続先に注意すること。
+2 層・2 インスタンスが同時に稼働している（2026-10-31〜）。クエリ実行時は層を間違えないこと。台帳: `docs/DB_REGISTRY.md`。
 
-| インスタンス | Bolt | HTTP | 対象スキル |
-|------------|------|------|-----------|
-| support-db | localhost:7687 | localhost:7474 | neo4j-support-db, provider-search |
-| livelihood-support | localhost:7688 | localhost:7475 | livelihood-support |
+| インスタンス | 層 | Bolt | HTTP | MCP | 対象スキル |
+|------------|---|------|------|-----|-----------|
+| support-db-neo4j | 共有（事業所・口コミ） | localhost:7687 | localhost:7474 | `neo4j-shared` | provider-search, wamnet-provider-sync |
+| nest-support-neo4j | 個人（利用者・家族） | localhost:7688 | localhost:7475 | `neo4j` | neo4j-support-db, narrative-intake, ecomap-generator |
 
-**`neo4j` MCP のデフォルト接続先は port 7687（support-db）。** livelihood-support のクエリは `neo4j-livelihood` MCP（port 7688）を使用すること。claude_desktop_config.json に両方のMCPが設定済み。
+**共有層に個人データを書かない。個人層に ServiceProvider を作らない。** 事業所は `wamnetId` で共有層を参照する。
 
 ---
 
