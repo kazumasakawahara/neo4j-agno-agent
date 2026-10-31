@@ -41,6 +41,7 @@ neo4j-agno-agent/
 ├── docs/
 │   ├── DB_REGISTRY.md          # どの DB に何があり、どこで動き、誰が面倒を見るかの台帳
 │   ├── NEO4J_SCHEMA_CONVENTION.md
+│   ├── SUMMARY_2026-10-31.md   # 2026-10-30〜31 の作業の総括
 │   ├── DB_INVENTORY_TASKS.md / DB_SPLIT_TASKS.md / CONSOLIDATION_TASKS.md   # 2026-10-31 の整理の記録
 │   └── …
 ├── configs/                    # Claude Desktop の MCP 設定のひな形
